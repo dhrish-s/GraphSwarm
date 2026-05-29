@@ -2,7 +2,7 @@
 
 ## 🎉 What's Been Created
 
-You now have a **complete, production-ready project structure** for GraphSwarm with:
+This repository contains a **complete, production-ready project structure** for GraphSwarm with:
 
 ### 📚 Documentation (100% Complete)
 - ✅ **README.md** - Comprehensive project overview with quick start
@@ -226,37 +226,37 @@ graphswarm/
 3. ✅ Read README.md
 4. ✅ Push to GitHub using GITHUB_SETUP.md
 
-### Week 1 - Phase 1 (Foundation)
+### Part 1 - Phase 1 (Foundation)
 1. Implement parser.rs with tree-sitter
 2. Complete call_graph.rs with BFS/DFS
 3. Write comprehensive tests
 4. Benchmark on Flask repo
 
-### Week 2 - Phase 1 (Storage)
+### Part 2 - Phase 1 (Storage)
 1. Implement KV backend integration
 2. Design and implement schema
 3. Write graph query operations
 4. Benchmark query latency
 
-### Week 3 - Phase 2 (Tracking)
+### Part 3 - Phase 2 (Tracking)
 1. Complete action logger
 2. Implement history tracking
 3. Build learning logic
 4. Test concurrent logging
 
-### Week 4 - Phase 3 (Intelligence)
+### Part 4 - Phase 3 (Intelligence)
 1. Implement relevance scoring
 2. Build query engine
 3. Add ranking & explanation
 4. Test on sample queries
 
-### Week 5 - Phase 4 (MCP)
+### Part 5 - Phase 4 (MCP)
 1. Implement MCP server
 2. Add tool handlers
 3. Integrate all components
 4. Test with Claude Code
 
-### Week 6 - Phase 5 (Validation)
+### Part 6 - Phase 5 (Validation)
 1. Run comprehensive benchmarks
 2. Document results
 3. Polish code & docs
@@ -318,10 +318,10 @@ graphswarm/
 
 ## 💡 Tips for Implementation
 
-1. **Test as You Go** - Run `cargo test` after each change
-2. **Use the Roadmap** - Follow Phase/Week plan systematically
+1. **Test During Development** - Run `cargo test` after each change
+2. **Use the Roadmap** - Follow the phased plan systematically
 3. **Profile Early** - Benchmark frequently for performance
-4. **Document Changes** - Update docs as you implement
+4. **Document Changes** - Update documentation as implementation progresses
 5. **Commit Often** - Small, focused commits are better
 6. **Stay Organized** - Keep modules focused and minimal
 
@@ -368,14 +368,14 @@ Before starting implementation:
 
 ---
 
-## 🚀 You're All Set!
+## 🚀 Setup Complete
 
-The GraphSwarm project is **fully set up and ready to implement**. Everything is documented, organized, and tested.
+The GraphSwarm project is **fully set up and ready for implementation**. Documentation, structure, and initial tests are in place.
 
 ### Next Immediate Action:
 
 ```bash
-# Move to the project
+# Change to the project directory
 cd /home/claude/graphswarm
 
 # Verify everything works
@@ -389,10 +389,10 @@ git remote add origin https://github.com/dhrish-s/graphswarm.git
 git push -u origin main
 ```
 
-**Good luck! You've got this! 🎉**
+**Setup complete.**
 
 ---
 
-*Document Created: May 28, 2026*
+*Part 1*
 *Project: GraphSwarm v0.1.0*
 *Status: Ready for Implementation*

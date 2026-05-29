@@ -1,0 +1,52 @@
+[package]
+name = "graphswarm"
+version = "0.1.0"
+edition = "2021"
+authors = ["Dhrish"]
+description = "Graph-aware distributed memory for AI coding agents"
+license = "MIT"
+repository = "https://github.com/dhrish-s/graphswarm"
+readme = "README.md"
+keywords = ["ai", "agents", "memory", "code-analysis", "llm"]
+categories = ["development-tools", "algorithms"]
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4"
+env_logger = "0.11"
+dashmap = "5.5"
+parking_lot = "0.12"
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.4", features = ["derive"] }
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.8"
+
+[[bench]]
+name = "graph_traversal"
+harness = false
+
+[[bench]]
+name = "indexing_speed"
+harness = false
+
+[[bench]]
+name = "action_logging"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

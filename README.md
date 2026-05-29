@@ -14,16 +14,16 @@ A lock-free distributed key-value memory system that enables AI coding agents (C
 
 ### The Problem
 
-When Claude Code (or any AI agent) works on a large codebase, it wastes resources:
+When an AI agent works on a large codebase, the following issues commonly occur:
 
 ```
-❌ Re-scans the same 5 files repeatedly (token waste)
-❌ Loads entire files when it only needs one function (context bloat)
-❌ Has no memory of what it tried and failed (no learning)
-❌ Doesn't understand code dependencies (fragile edits break things)
+❌ Re-scans the same files repeatedly (token waste)
+❌ Loads entire files when only a single function is required (context bloat)
+❌ Lacks memory of previous attempts and failures (no learning)
+❌ Lacks understanding of code dependencies (fragile edits may break other code)
 ```
 
-**Result:** 3,000+ wasted tokens, slow task completion, and fragile changes.
+**Result:** Increased token usage, slower task completion, and higher risk of fragile changes.
 
 ### The Solution
 
@@ -32,7 +32,7 @@ GraphSwarm provides:
 ```
 ✅ Index code structure once, query it smartly
 ✅ Load only what's needed (functions, not files)
-✅ Track what the agent tried—and learn from it
+✅ Track what the agent tried-and learn from it
 ✅ Understand dependencies to prevent breaking changes
 ✅ Integrates with Claude Code via MCP in one command
 ```
@@ -277,7 +277,7 @@ graphswarm server --port 3000 &
 
 #### Step 2: Configure Claude Code
 
-In your Claude Code config (`.claude/config.json`):
+In Claude Code configuration (`.claude/config.json`):
 
 ```json
 {
@@ -293,7 +293,7 @@ In your Claude Code config (`.claude/config.json`):
 
 #### Step 3: Use in Prompts
 
-In Claude Code:
+In Claude Code configuration examples:
 
 ```
 User: "Refactor the payment module to handle retries"
@@ -303,7 +303,7 @@ Claude Code (internal):
 
 → GraphSwarm returns: [payment.py, payment_utils.py, retry_handler.py, ...]
 
-Claude Code: "I see the payment module structure. Let me load those files..."
+Claude Code proceeds to load the returned files for further analysis.
 ```
 
 ---
@@ -609,15 +609,15 @@ $ graphswarm query "Add caching to user lookup"
 
 **First run:**
 ```
-Agent: "I'll refactor the payment module"
+Action: Initiate refactor of the payment module
 GraphSwarm logs: FileEdit(payment.py), Error(stripe_integration.py)
 ```
 
 **Second run:**
 ```
-Agent: "Let's refactor payment again"
-GraphSwarm: "Hey, last time you broke stripe_integration.py. Load that too."
-Agent gets: [payment.py, stripe_integration.py] ← smarter context
+Action: Initiate refactor of the payment module
+GraphSwarm recommends also loading stripe_integration.py due to the previous error
+Context returned: [payment.py, stripe_integration.py]
 ```
 
 ### Example 3: Dependency Awareness
@@ -659,28 +659,28 @@ When complete, GraphSwarm will deliver:
 
 ## 🗺️ Roadmap
 
-### Phase 1: Foundation (Weeks 1-2) ✅ (In Progress)
+### Phase 1: Foundation (Part 1) ✅ (In Progress)
 - [x] Project setup & documentation
 - [ ] Repo parser (Python/JavaScript)
 - [ ] Call graph builder
 - [ ] KV-SWARM integration
 
-### Phase 2: Agent Awareness (Week 3)
+### Phase 2: Agent Awareness (Part 2)
 - [ ] Action tracker
 - [ ] History logging
 - [ ] Basic learning
 
-### Phase 3: Intelligence (Week 4)
+### Phase 3: Intelligence (Part 3)
 - [ ] Query engine
 - [ ] Relevance scoring
 - [ ] Top-K ranking
 
-### Phase 4: Integration (Week 5)
+### Phase 4: Integration (Part 4)
 - [ ] MCP server
 - [ ] Claude Code integration
 - [ ] Tool definitions
 
-### Phase 5: Validation (Week 6)
+### Phase 5: Validation (Part 5)
 - [ ] Benchmarks
 - [ ] Real-world testing
 - [ ] Documentation polish
@@ -689,11 +689,11 @@ When complete, GraphSwarm will deliver:
 
 ## 📚 Documentation
 
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Deep dive into system design
-- **[API.md](docs/API.md)** — Complete API reference
-- **[MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md)** — MCP server guide
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — How to contribute
-- **[ROADMAP.md](docs/ROADMAP.md)** — Detailed phase-by-phase roadmap
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Deep dive into system design
+- **[API.md](docs/API.md)** - Complete API reference
+- **[MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md)** - MCP server guide
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - How to contribute
+- **[ROADMAP.md](docs/ROADMAP.md)** - Detailed phase-by-phase roadmap
 
 ---
 
@@ -736,4 +736,4 @@ Built with:
 
 **Made with ❤️ for the AI agent era**
 
-*Last updated: May 28, 2026*
+*Part 1*
