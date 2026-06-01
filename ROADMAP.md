@@ -1,203 +1,131 @@
-# GraphSwarm Development Roadmap
+# GraphSwarm Roadmap
 
-## Overview
-
-GraphSwarm is a 6-week project to build graph-aware distributed memory for AI coding agents. This document outlines the phases, milestones, and success criteria.
-
-**Timeline:** Parts 1-6
+## Vision
+Single Rust binary. Zero dependencies. One command to map any codebase.
+The production version of what Graphify proved was possible in Python.
 
 ---
 
-## Phase 1: Foundation (Parts 1-2)
+## Part 0 - Documentation Update (DO THIS FIRST)
+- [ ] Update README.md with final vision
+- [ ] Update ROADMAP.md (this file)
+- [ ] Update docs/ARCHITECTURE.md with 4-layer design
+- [ ] Verify Cargo.toml has all 20 dependencies correct
+- [ ] Confirm all 41 scaffold files are in place
 
-### Part 1: Repo Parser + Call Graph
-
-**Objective:** Convert a GitHub repo into a queryable call graph.
-
-#### Deliverables
-
-- [ ] `src/indexer/parser.rs` - Tree-sitter based AST parser
-- [ ] `src/indexer/call_graph.rs` - Call graph data structure
-- [ ] `src/indexer/extractor.rs` - Entity extraction from AST
-- [ ] CLI command: `graphswarm index ./repo`
-- [ ] Tests: Parser handles Python/JavaScript correctly
-- [ ] Example output on Flask/FastAPI repo
-
-#### Daily Breakdown
-
-**Day 1-2: Setup & Design**
-- [ ] Create Rust project structure
-- [ ] Design CodeEntity and CallGraph data structures
-- [ ] Write tests for data structures
-- [ ] Setup tree-sitter bindings
-
-**Day 3-4: Parser Implementation**
-- [ ] Implement Python parser with tree-sitter
-- [ ] Implement JavaScript parser with tree-sitter
-- [ ] Extract functions, classes, methods
-- [ ] Extract imports and dependencies
-- [ ] Write unit tests
-
-**Day 5: Graph Builder**
-- [ ] Implement call graph construction
-- [ ] Implement graph traversal (BFS/DFS)
-- [ ] Add statistics computation
-- [ ] Write integration tests
-
-**Success Criteria:**
-- [x] Parser handles 100-file repo in < 5 seconds
-- [x] Call graph has > 90% accuracy (spot-check)
-- [x] Graph stores < 100MB for 50-file repo
-
-#### Testing
-
-```bash
-# Run all tests
-cargo test
-
-# Run specific tests
-cargo test indexer::tests
-
-# Benchmark
-cargo bench indexing_speed
-```
+Success: `cargo build` compiles with zero errors (stubs ok, no logic yet)
 
 ---
 
-### Part 2: KV-SWARM Integration
+## Part 1 - Repo Parser + Call Graph
+Goal: parse a real codebase into a CallGraph in memory
 
-**Objective:** Store and query call graphs in KV backend efficiently.
+- [ ] `src/indexer/parser.rs` - tree-sitter for Rust, Python, JS, TS
+- [ ] `src/indexer/extractor.rs` - extract CodeEntity from AST nodes
+- [ ] `src/indexer/call_graph.rs` - graph structure + BFS/DFS traversal
+- [ ] `src/indexer/mod.rs` - walk directory, build full CallGraph
+- [ ] Unit tests: `cargo test indexer`
+- [ ] Benchmark: 100-file repo indexes in < 5 seconds
 
-#### Deliverables
-
-- [ ] `src/storage/schema.rs` - KV schema definition
-- [ ] `src/storage/kv_backend.rs` - KV wrapper
-- [ ] `src/storage/graph_queries.rs` - Graph traversal queries
-- [ ] Performance tests: query latency < 10ms
-- [ ] Documentation: "How to query the graph"
-
-#### Daily Breakdown
-
-**Day 1-2: Schema Design**
-- [ ] Design KV key schema for entities, imports, indexes
-- [ ] Write serialization/deserialization
-- [ ] Create StorageSchema utility
-- [ ] Write unit tests
-
-**Day 3-4: Query Implementation**
-- [ ] Implement find_callers() with KV queries
-- [ ] Implement find_callees() with KV queries
-- [ ] Implement find_in_file() with KV queries
-- [ ] Implement graph traversal with KV
-- [ ] Write tests
-
-**Day 5: Integration**
-- [ ] Integrate with indexer (Part 1)
-- [ ] End-to-end test: index → store → query
-- [ ] Performance benchmarking
-- [ ] Documentation
-
-**Success Criteria:**
-- [x] Find all callers of a function in < 10ms
-- [x] Full graph traversal (50-file) in < 100ms
-- [x] Memory overhead < 20% beyond raw graph
+### Required features
+- Parser handles Rust files (fn, impl, struct)
+- Parser handles Python files (def, class)
+- Parser handles JavaScript/TypeScript files (function, class, arrow fn)
+- Extractor creates correct CodeEntity for each function
+- Call edges are detected (A calls B → edge A→B)
+- CallGraph BFS/DFS work correctly
+- 100-file repo indexes in < 5 seconds
 
 ---
 
-## Phase 2: Agent Awareness (Part 3)
+## Part 2 - KV-SWARM Storage
+Goal: persist metadata and graph edges in KV-SWARM
 
-**Objective:** Log and learn from agent actions.
+- [ ] `src/storage/schema.rs`
+- [ ] `src/storage/kv_backend.rs`
+- [ ] `src/storage/graph_queries.rs`
+- [ ] Integrate indexer output with KV backend
+- [ ] End-to-end store/load tests
 
-#### Deliverables
-
-- [ ] `src/tracker/action_log.rs` - Action schema
-- [ ] `src/tracker/logger.rs` - Logging implementation
-- [ ] `src/tracker/history.rs` - History queries
-- [ ] CLI command: `graphswarm log-action`
-- [ ] Tests: Concurrent logging without blocking
-
-#### Daily Breakdown
-
-**Day 1-2: Schema Design**
-- [ ] Design AgentAction enum variants
-- [ ] Design action log storage format
-- [ ] Create timestamp handling
-- [ ] Write tests
-
-**Day 3-4: Logger Implementation**
-- [ ] Implement lock-free logger
-- [ ] Implement action appending
-- [ ] Implement history queries
-- [ ] Write tests
-
-**Day 5: Integration**
-- [ ] Connect to KV backend
-- [ ] End-to-end test
-- [ ] Performance testing
-- [ ] Documentation
-
-**Success Criteria:**
-- [x] Log 1,000+ actions without blocking
-- [x] Replay last N actions correctly
-- [x] Query "files touched in last hour"
+### Required features
+- KV store opens/creates at `graphswarm-out/.graphswarm_db/`
+- `store_graph()` writes entities + edges correctly
+- `load_graph()` reconstructs CallGraph
+- `find_callers()` returns correct results
+- `find_callees()` returns correct results
+- `entity_by_id()` returns correct results
 
 ---
 
-## Phase 3: Intelligence (Part 4)
+## Part 3 - Action Tracker
+Goal: log agent behavior, then use it to improve relevance
 
-**Objective:** Build query engine with relevance scoring.
+- [ ] `src/tracker/action_log.rs`
+- [ ] `src/tracker/logger.rs`
+- [ ] `src/tracker/history.rs`
+- [ ] Async, non-blocking action logging
+- [ ] `recent_files(n)` and `recent_errors()` support
 
-#### Deliverables
-
-- [ ] `src/query/relevance.rs` - Scoring algorithm
-- [ ] `src/query/ranker.rs` - Top-K ranking
-- [ ] `src/query/api.rs` - Query interface
-- [ ] CLI command: `graphswarm query "fix payment bug"`
-- [ ] Examples: 10 test queries with expected results
-
-#### Daily Breakdown
-
-**Day 1-2: Scoring Algorithm**
-- [ ] Design relevance scoring formula
-- [ ] Implement semantic matching
-- [ ] Implement recency scoring
-- [ ] Implement error correlation
-- [ ] Implement dependency importance
-- [ ] Write tests
-
-**Day 3-4: Query Engine**
-- [ ] Implement query_relevant_files()
-- [ ] Implement query_dependents()
-- [ ] Implement query_dependencies()
-- [ ] Combine scores and rank
-- [ ] Write tests
-
-**Day 5: Integration & Polish**
-- [ ] Connect to graph + tracker
-- [ ] Add explanations for each result
-- [ ] End-to-end test
-- [ ] Benchmark on test queries
-- [ ] Documentation
-
-**Success Criteria:**
-- [x] Rank correct files in top-3 for 10 test queries
-- [x] Explain each result with reason
-- [x] Handle missing history gracefully
+### Required features
+- Actions logged without blocking queries
+- History persisted in KV store
+- `recent_files(5)` returns last 5 unique files
+- Unit tests pass: `cargo test tracker`
 
 ---
 
-## Phase 4: Integration (Part 5)
+## Part 4 - Query Engine
+Goal: answer questions with ranked relevant files and entities
 
-**Objective:** Expose GraphSwarm via MCP to Claude Code.
+- [ ] `src/query/relevance.rs`
+- [ ] `src/query/ranker.rs`
+- [ ] `src/query/api.rs`
+- [ ] `QueryEngine::new(store, history)`
+- [ ] `QueryEngine::query(q, top_k)`
+- [ ] `QueryEngine::explain(entity_id)`
+- [ ] `QueryEngine::path(from, to)`
 
-#### Deliverables
+### Scoring
+- Name match: entity name contains query terms (0.4)
+- Call depth: closer in graph (0.3)
+- Recent access: action history boost (0.2)
+- Docstring match: query terms in docstring (0.1)
 
-- [ ] `src/mcp/server.rs` - MCP server
-- [ ] `src/mcp/tools.rs` - Tool definitions
-- [ ] `src/mcp/protocol.rs` - MCP protocol
-- [ ] CLI command: `graphswarm server --port 3000`
-- [ ] Integration guide for Claude Code
-- [ ] Example prompts
+---
+
+## Part 5 - CLI + MCP
+Goal: expose GraphSwarm through commands and MCP tools
+
+- [ ] `src/cli/index_cmd.rs`
+- [ ] `src/cli/query_cmd.rs`
+- [ ] `src/cli/server_cmd.rs`
+- [ ] `graphswarm server` on stdio
+- [ ] `graphswarm install` writes agent skill
+- [ ] All 5 MCP tools available
+
+### MCP tools
+- `query_graph`
+- `get_callers`
+- `get_callees`
+- `shortest_path`
+- `explain_entity`
+
+---
+
+## Part 6 - Benchmarks + Polish
+Goal: validate performance and complete the product
+
+- [ ] `cargo bench`
+- [ ] Performance targets met
+- [ ] Documentation updated
+
+### Targets
+- Index 100-file repo < 5 seconds
+- Single entity query < 1 ms (p99)
+- Full graph traversal (50 files) < 100 ms
+- Memory overhead < 100 MB (50-file repo)
+- Binary size < 20 MB
+
 
 #### Daily Breakdown
 

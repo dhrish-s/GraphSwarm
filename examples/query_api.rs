@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
         println!("No results (query engine not yet implemented)");
     }
     for r in results {
-        println!("{}: {:.2} — {}", r.file, r.relevance_score, r.reason);
+        println!("{}: {:.2} - {}", r.file, r.relevance_score, r.reason);
     }
     Ok(())
 }

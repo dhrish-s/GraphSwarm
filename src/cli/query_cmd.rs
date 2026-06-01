@@ -27,7 +27,7 @@ impl QueryCommand {
         println!("   Format: {}", self.format);
 
         // TODO: load graph from index, run query engine in Part 4
-        println!("\n(query engine not yet implemented — see ROADMAP.md Part 4)");
+        println!("\n(query engine not yet implemented - see ROADMAP.md Part 4)");
         Ok(())
     }
 }

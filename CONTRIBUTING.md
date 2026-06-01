@@ -37,10 +37,10 @@ Fixes #42
 
 ## Branch Naming
 
-- `feat/description` — new feature
-- `fix/description` — bug fix
-- `docs/description` — documentation
-- `refactor/description` — refactor
+- `feat/description` - new feature
+- `fix/description` - bug fix
+- `docs/description` - documentation
+- `refactor/description` - refactor
 
 ## Pull Request Checklist
 

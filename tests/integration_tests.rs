@@ -1,4 +1,4 @@
-// Integration tests — to be filled in during implementation.
+// Integration tests - to be filled in during implementation.
 
 #[test]
 fn placeholder() {
