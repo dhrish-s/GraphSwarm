@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntityType {
     Function,
     Class,
     Method,
+    Import,
     Module,
 }
 
@@ -15,7 +15,31 @@ impl std::fmt::Display for EntityType {
             EntityType::Function => write!(f, "function"),
             EntityType::Class => write!(f, "class"),
             EntityType::Method => write!(f, "method"),
+            EntityType::Import => write!(f, "import"),
             EntityType::Module => write!(f, "module"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum Language {
+    Rust,
+    Python,
+    JavaScript,
+    TypeScript,
+    Go,
+    Unknown,
+}
+
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Language::Rust => write!(f, "rust"),
+            Language::Python => write!(f, "python"),
+            Language::JavaScript => write!(f, "javascript"),
+            Language::TypeScript => write!(f, "typescript"),
+            Language::Go => write!(f, "go"),
+            Language::Unknown => write!(f, "unknown"),
         }
     }
 }
@@ -24,34 +48,38 @@ impl std::fmt::Display for EntityType {
 pub struct CodeEntity {
     pub id: String,
     pub name: String,
-    pub file: String,
     pub entity_type: EntityType,
-    pub signature: String,
+    pub file_path: String,
+    pub line_start: u32,
+    pub line_end: u32,
+    pub language: Language,
+    pub docstring: Option<String>,
     pub calls: Vec<String>,
     pub called_by: Vec<String>,
-    pub imports: Vec<String>,
-    pub imported_by: Vec<String>,
-    pub line_number: usize,
-    pub metadata: HashMap<String, String>,
 }
 
 impl CodeEntity {
     pub fn new(
         id: String,
         name: String,
-        file: String,
         entity_type: EntityType,
-        signature: String,
-        line_number: usize,
+        file_path: String,
+        line_start: u32,
+        line_end: u32,
+        language: Language,
+        docstring: Option<String>,
     ) -> Self {
         Self {
-            id, name, file, entity_type, signature,
+            id,
+            name,
+            entity_type,
+            file_path,
+            line_start,
+            line_end,
+            language,
+            docstring,
             calls: Vec::new(),
             called_by: Vec::new(),
-            imports: Vec::new(),
-            imported_by: Vec::new(),
-            line_number,
-            metadata: HashMap::new(),
         }
     }
 
@@ -66,22 +94,6 @@ impl CodeEntity {
             self.called_by.push(caller_id);
         }
     }
-
-    pub fn add_import(&mut self, import: String) {
-        if !self.imports.contains(&import) {
-            self.imports.push(import);
-        }
-    }
-
-    pub fn add_imported_by(&mut self, importer: String) {
-        if !self.imported_by.contains(&importer) {
-            self.imported_by.push(importer);
-        }
-    }
-
-    pub fn set_metadata(&mut self, key: String, value: String) {
-        self.metadata.insert(key, value);
-    }
 }
 
 #[cfg(test)]
@@ -91,18 +103,33 @@ mod tests {
     #[test]
     fn create_entity() {
         let e = CodeEntity::new(
-            "a.py::foo".into(), "foo".into(), "a.py".into(),
-            EntityType::Function, "def foo()".into(), 1,
+            "a.py::foo".into(),
+            "foo".into(),
+            EntityType::Function,
+            "a.py".into(),
+            1,
+            1,
+            Language::Python,
+            Some("docs".into()),
         );
+
         assert_eq!(e.name, "foo");
         assert_eq!(e.entity_type, EntityType::Function);
+        assert_eq!(e.language, Language::Python);
+        assert_eq!(e.docstring.as_deref(), Some("docs"));
     }
 
     #[test]
     fn no_duplicate_calls() {
         let mut e = CodeEntity::new(
-            "a.py::foo".into(), "foo".into(), "a.py".into(),
-            EntityType::Function, "def foo()".into(), 1,
+            "a.py::foo".into(),
+            "foo".into(),
+            EntityType::Function,
+            "a.py".into(),
+            1,
+            1,
+            Language::Python,
+            None,
         );
         e.add_call("b.py::bar".into());
         e.add_call("b.py::bar".into());

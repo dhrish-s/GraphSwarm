@@ -8,11 +8,15 @@ pub struct CodeParser {
 impl CodeParser {
     pub fn new(language: &str) -> Result<Self> {
         match language {
-            "python" | "py" | "javascript" | "js" | "auto" => Ok(Self {
+            "python" | "py"
+            | "javascript" | "js"
+            | "typescript" | "ts"
+            | "rust" | "rs"
+            | "go" | "auto" => Ok(Self {
                 language: language.to_string(),
             }),
             other => Err(Error::parser(format!(
-                "Unsupported language: {other}. Use 'python', 'javascript', or 'auto'"
+                "Unsupported language: {other}. Use 'python', 'javascript', 'rust', 'go', or 'auto'"
             ))),
         }
     }
@@ -36,6 +40,8 @@ mod tests {
     fn supported_languages() {
         assert!(CodeParser::new("python").is_ok());
         assert!(CodeParser::new("js").is_ok());
+        assert!(CodeParser::new("typescript").is_ok());
+        assert!(CodeParser::new("rust").is_ok());
         assert!(CodeParser::new("auto").is_ok());
     }
 
