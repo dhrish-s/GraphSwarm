@@ -31,6 +31,7 @@ tower-http = { version = "0.5", features = ["cors", "trace"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.4", features = ["derive"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
+sled = "0.34"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

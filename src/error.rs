@@ -30,6 +30,12 @@ pub enum Error {
 
     #[error("Not found: {0}")]
     NotFound(String),
+
+    // Separate variant for serde serialization failures inside the storage layer.
+    // Distinguishing "disk I/O failed" (Storage) from "value couldn't be encoded"
+    // (Serialization) makes error messages clearer and lets callers handle them differently.
+    #[error("Serialization error: {0}")]
+    Serialization(String),
 }
 
 impl Error {
@@ -40,6 +46,7 @@ impl Error {
     pub fn mcp(msg: impl Into<String>) -> Self { Error::Mcp(msg.into()) }
     pub fn config(msg: impl Into<String>) -> Self { Error::Config(msg.into()) }
     pub fn not_found(msg: impl Into<String>) -> Self { Error::NotFound(msg.into()) }
+    pub fn serialization(msg: impl Into<String>) -> Self { Error::Serialization(msg.into()) }
 }
 
 #[cfg(test)]
