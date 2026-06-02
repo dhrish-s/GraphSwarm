@@ -374,4 +374,3 @@ mod tests {
         assert_eq!(graph.edge_count(), 0);
     }
 }
-

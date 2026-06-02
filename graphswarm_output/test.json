@@ -1,10 +1,10 @@
 {
   "entities": {
-    "C:\\Users\\ASUS\\AppData\\Local\\Temp\\.tmpQyYvyh\\a.py::foo": {
-      "id": "C:\\Users\\ASUS\\AppData\\Local\\Temp\\.tmpQyYvyh\\a.py::foo",
+    "C:\\Users\\ASUS\\AppData\\Local\\Temp\\.tmpDRVru6\\a.py::foo": {
+      "id": "C:\\Users\\ASUS\\AppData\\Local\\Temp\\.tmpDRVru6\\a.py::foo",
       "name": "foo",
       "entity_type": "Function",
-      "file_path": "C:\\Users\\ASUS\\AppData\\Local\\Temp\\.tmpQyYvyh\\a.py",
+      "file_path": "C:\\Users\\ASUS\\AppData\\Local\\Temp\\.tmpDRVru6\\a.py",
       "line_start": 1,
       "line_end": 2,
       "language": "Python",
@@ -15,8 +15,8 @@
   },
   "edges": [],
   "metadata": {
-    "repo_path": "C:\\Users\\ASUS\\AppData\\Local\\Temp\\.tmpQyYvyh",
-    "indexed_at": "2026-06-02T01:34:16.903080700Z",
+    "repo_path": "C:\\Users\\ASUS\\AppData\\Local\\Temp\\.tmpDRVru6",
+    "indexed_at": "2026-06-02T02:10:11.183138600Z",
     "total_files": 1,
     "total_entities": 1,
     "languages": [

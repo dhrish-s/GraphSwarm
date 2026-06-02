@@ -431,24 +431,48 @@ impl CodeParser {
                 }
             }
             "import_from_statement" => {
-                let mut module_path = String::new();
+                let module_node = node.child_by_field_name("module_name");
+                let module_path = module_node
+                    .map(|module| self.node_text(module, source))
+                    .unwrap_or_default();
+                let module_end = module_node.map(|module| module.end_byte()).unwrap_or(0);
                 let mut imports_list = Vec::new();
 
                 for child in node.named_children(&mut cursor) {
-                    if child.kind() == "dotted_name" || child.kind() == "identifier" {
-                        module_path = self.node_text(child, source);
-                    } else if child.kind() == "import_list" {
+                    if module_node
+                        .map(|module| child.start_byte() == module.start_byte() && child.end_byte() == module.end_byte())
+                        .unwrap_or(false)
+                    {
+                        continue;
+                    }
+
+                    if child.kind() == "import_list" {
                         let mut import_cursor = child.walk();
                         for imp in child.named_children(&mut import_cursor) {
-                            if imp.kind() == "import_alias" || imp.kind() == "identifier" {
+                            if imp.kind() == "import_alias" || imp.kind() == "aliased_import" {
                                 if let Some(first) = imp.named_child(0) {
                                     let symbol = self.node_text(first, source);
                                     let alias = imp.child_by_field_name("alias")
                                         .map(|n| self.node_text(n, source));
                                     imports_list.push((symbol, alias));
                                 }
+                            } else if imp.kind() == "identifier" {
+                                let symbol = self.node_text(imp, source);
+                                imports_list.push((symbol, None));
                             }
                         }
+                    } else if child.kind() == "import_alias" || child.kind() == "aliased_import" {
+                        if let Some(first) = child.named_child(0) {
+                            let symbol = self.node_text(first, source);
+                            let alias = child.child_by_field_name("alias")
+                                .map(|n| self.node_text(n, source));
+                            imports_list.push((symbol, alias));
+                        }
+                    } else if child.start_byte() >= module_end
+                        && (child.kind() == "dotted_name" || child.kind() == "identifier")
+                    {
+                        let symbol = self.node_text(child, source);
+                        imports_list.push((symbol, None));
                     }
                 }
 
