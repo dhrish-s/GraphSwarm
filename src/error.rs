@@ -36,6 +36,9 @@ pub enum Error {
     // (Serialization) makes error messages clearer and lets callers handle them differently.
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    #[error("Tracker error: {0}")]
+    Tracker(String),
 }
 
 impl Error {
@@ -47,6 +50,7 @@ impl Error {
     pub fn config(msg: impl Into<String>) -> Self { Error::Config(msg.into()) }
     pub fn not_found(msg: impl Into<String>) -> Self { Error::NotFound(msg.into()) }
     pub fn serialization(msg: impl Into<String>) -> Self { Error::Serialization(msg.into()) }
+    pub fn tracker(msg: impl Into<String>) -> Self { Error::Tracker(msg.into()) }
 }
 
 #[cfg(test)]

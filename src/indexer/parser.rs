@@ -124,9 +124,7 @@ impl CodeParser {
                         e.add_call(id.clone());
                     }
                 } else if let Some(last_name) = callee_name
-                    .split(|c: char| c == '.' || c == ':')
-                    .filter(|s| !s.is_empty())
-                    .last()
+                    .split(['.', ':']).rfind(|s: &&str| !s.is_empty())
                 {
                     if let Some(ids) = name_map.get(last_name) {
                         for id in ids {

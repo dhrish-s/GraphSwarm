@@ -1,7 +1,8 @@
 use clap::Args;
 use crate::error::Result;
 use crate::indexer::CodeIndexer;
-use crate::indexer::call_graph::CallGraph;
+use crate::storage::{GraphStore, KvBackend};
+use crate::tracker::ActionLogger;
 use std::path::Path;
 use std::fs;
 use serde_json;
@@ -95,6 +96,24 @@ impl IndexCommand {
         }
 
         println!("Wrote graph to: {}", out_file.to_string_lossy());
+
+        // Persist the graph to the KV store so `graphswarm query` can read
+        // it without re-indexing.  The store lives at <repo>/.graphswarm_db/.
+        let db_path = repo_path.join(".graphswarm_db");
+        let kv = KvBackend::open(&db_path)?;
+        let store = GraphStore::new(kv.clone());
+        store.store_graph(&graph)?;
+        println!("Graph persisted to: {}", db_path.display());
+
+        // Start the action tracker background task.
+        // ActionLogger::new() spawns a Tokio task — it is zero-cost to start.
+        // The task runs until the process exits, logging every agent action
+        // to the same sled database that holds the call graph.
+        let logger = ActionLogger::new(kv);
+        // Log the index operation itself as the first tracked action.
+        // .ok() — a tracker failure must never crash the indexer.
+        logger.log_file_read(&self.path).await.ok();
+        println!("Action tracker started.");
 
         Ok(())
     }

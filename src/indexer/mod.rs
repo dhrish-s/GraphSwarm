@@ -231,7 +231,7 @@ impl CodeIndexer {
 
         let mut resolved_symbol = suffix_segments.last()?.to_string();
         let module_segments: Vec<&str> = target_module.split(separator).filter(|s| !s.is_empty()).collect();
-        let suffix: Vec<&str> = suffix_segments.iter().copied().collect();
+        let suffix: Vec<&str> = suffix_segments.to_vec();
 
         if module_segments.len() > 1 {
             let compare = &module_segments[1..];

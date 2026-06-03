@@ -59,6 +59,7 @@ pub struct CodeEntity {
 }
 
 impl CodeEntity {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         name: String,
