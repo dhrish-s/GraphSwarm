@@ -157,9 +157,12 @@ fn handle_query_graph(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
     let mut lines = vec![format!("Query: \"{query}\" -top {} result(s)\n", results.len())];
 
     for (i, r) in results.iter().enumerate() {
+        let stale = r.stale_warning.as_deref()
+            .map(|w| format!("\n   ⚠ {w}"))
+            .unwrap_or_default();
         lines.push(format!(
-            "{}. {} (score: {:.3})\n   Reason: {}\n   Entities:",
-            i + 1, r.file_path, r.relevance_score, r.reason
+            "{}. {} (score: {:.3})\n   Reason: {}{}\n   Entities:",
+            i + 1, r.file_path, r.relevance_score, r.reason, stale
         ));
         for entity in &r.entities {
             lines.push(format!(

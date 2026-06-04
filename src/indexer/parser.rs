@@ -3,8 +3,10 @@ use super::extractor::{CodeEntity, EntityType, Language};
 use std::path::Path;
 use tree_sitter::{Parser, Node};
 
-const PYTHON_EXTENSIONS: &[&str] = &["py"];
-const RUST_EXTENSIONS: &[&str] = &["rs"];
+const PYTHON_EXTENSIONS:      &[&str] = &["py"];
+const RUST_EXTENSIONS:        &[&str] = &["rs"];
+const JAVASCRIPT_EXTENSIONS:  &[&str] = &["js", "jsx", "mjs", "cjs"];
+const TYPESCRIPT_EXTENSIONS:  &[&str] = &["ts", "tsx", "mts", "cts"];
 
 #[derive(Debug, Clone)]
 pub struct Import {
@@ -23,12 +25,14 @@ impl CodeParser {
     pub fn new(language: &str) -> Result<Self> {
         match language {
             "python" | "py"
-            | "rust" | "rs"
+            | "rust"   | "rs"
+            | "javascript" | "js"
+            | "typescript" | "ts"
             | "auto" => Ok(Self {
                 language: language.to_string(),
             }),
             other => Err(Error::parser(format!(
-                "Unsupported language: {other}. Use 'python', 'rust', or 'auto'"
+                "Unsupported language: {other}. Use 'python', 'rust', 'javascript', 'typescript', or 'auto'"
             ))),
         }
     }
@@ -49,6 +53,12 @@ impl CodeParser {
             "rust" => parser
                 .set_language(tree_sitter_rust::language())
                 .map_err(|_| Error::parser("Failed to initialize Rust parser"))?,
+            "javascript" => parser
+                .set_language(tree_sitter_javascript::language())
+                .map_err(|_| Error::parser("Failed to initialize JavaScript parser"))?,
+            "typescript" => parser
+                .set_language(tree_sitter_typescript::language_typescript())
+                .map_err(|_| Error::parser("Failed to initialize TypeScript parser"))?,
             _ => return Ok(Vec::new()),
         }
 
@@ -58,8 +68,9 @@ impl CodeParser {
 
         let root = tree.root_node();
         let imports = match language {
-            "python" => self.extract_python_imports(root, source, path),
-            "rust" => self.extract_rust_imports(root, source, path),
+            "python"     => self.extract_python_imports(root, source, path),
+            "rust"       => self.extract_rust_imports(root, source, path),
+            "javascript" | "typescript" => self.extract_js_imports(root, source, path),
             _ => Vec::new(),
         };
 
@@ -81,10 +92,15 @@ impl CodeParser {
             "rust" => parser
                 .set_language(tree_sitter_rust::language())
                 .map_err(|_| Error::parser("Failed to initialize Rust parser"))?,
+            "javascript" => parser
+                .set_language(tree_sitter_javascript::language())
+                .map_err(|_| Error::parser("Failed to initialize JavaScript parser"))?,
+            "typescript" => parser
+                .set_language(tree_sitter_typescript::language_typescript())
+                .map_err(|_| Error::parser("Failed to initialize TypeScript parser"))?,
             _ => {
                 return Err(Error::parser(format!(
-                    "Language not supported for parsing: {}",
-                    language
+                    "Language not supported for parsing: {language}"
                 )))
             }
         }
@@ -98,8 +114,10 @@ impl CodeParser {
         // First pass: collect entities with their defining node so we can scan
         // each entity body for call-sites and resolve intra-file edges.
         let local_entities_nodes: Vec<(CodeEntity, Node)> = match language {
-            "python" => self.collect_python_entities(root, source, path, ""),
-            "rust" => self.collect_rust_entities(root, source, path, ""),
+            "python"     => self.collect_python_entities(root, source, path, ""),
+            "rust"       => self.collect_rust_entities(root, source, path, ""),
+            "javascript" => self.collect_js_entities(root, source, path, Language::JavaScript),
+            "typescript" => self.collect_js_entities(root, source, path, Language::TypeScript),
             _ => Vec::new(),
         };
 
@@ -113,8 +131,9 @@ impl CodeParser {
         let mut resolved_entities: Vec<CodeEntity> = Vec::new();
         for (mut e, node) in local_entities_nodes {
             let callees = match language {
-                "python" => self.find_python_calls(node, source),
-                "rust" => self.find_rust_calls(node, source),
+                "python"     => self.find_python_calls(node, source),
+                "rust"       => self.find_rust_calls(node, source),
+                "javascript" | "typescript" => self.find_js_calls(node, source),
                 _ => Vec::new(),
             };
 
@@ -158,6 +177,12 @@ impl CodeParser {
             if RUST_EXTENSIONS.contains(&extension.as_str()) {
                 return Ok("rust");
             }
+            if JAVASCRIPT_EXTENSIONS.contains(&extension.as_str()) {
+                return Ok("javascript");
+            }
+            if TYPESCRIPT_EXTENSIONS.contains(&extension.as_str()) {
+                return Ok("typescript");
+            }
 
             Err(Error::parser(format!(
                 "Could not infer language from file extension: {path}"
@@ -166,6 +191,10 @@ impl CodeParser {
             Ok("python")
         } else if self.language == "rs" {
             Ok("rust")
+        } else if self.language == "js" {
+            Ok("javascript")
+        } else if self.language == "ts" {
+            Ok("typescript")
         } else {
             Ok(self.language.as_str())
         }
@@ -379,6 +408,198 @@ impl CodeParser {
 
         names
     }
+    // ── JavaScript / TypeScript ───────────────────────────────────────────────
+
+    /// Collects entities from a JS/TS AST.
+    ///
+    /// Handles:
+    ///   function_declaration     → Function
+    ///   arrow_function (const f = () => {}) → Function
+    ///   method_definition        → Method
+    ///   class_declaration        → Class
+    fn collect_js_entities<'a>(
+        &self,
+        node: Node<'a>,
+        source: &str,
+        path: &str,
+        lang: Language,
+    ) -> Vec<(CodeEntity, Node<'a>)> {
+        let mut entities: Vec<(CodeEntity, Node)> = Vec::new();
+        let mut cursor = node.walk();
+
+        match node.kind() {
+            "function_declaration" | "generator_function_declaration" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = self.node_text(name_node, source);
+                    let entity = CodeEntity::new(
+                        format!("{path}::{name}"), name,
+                        EntityType::Function, path.into(),
+                        node.start_position().row as u32 + 1,
+                        node.end_position().row as u32 + 1,
+                        lang, None,
+                    );
+                    entities.push((entity, node));
+                }
+            }
+            "lexical_declaration" | "variable_declaration" => {
+                // const foo = () => { ... }  or  const foo = function() { ... }
+                for child in node.named_children(&mut cursor) {
+                    if child.kind() == "variable_declarator" {
+                        let name_opt = child.child_by_field_name("name")
+                            .map(|n| self.node_text(n, source));
+                        let value_opt = child.child_by_field_name("value");
+                        if let (Some(name), Some(val)) = (name_opt, value_opt) {
+                            if matches!(val.kind(), "arrow_function" | "function") {
+                                let entity = CodeEntity::new(
+                                    format!("{path}::{name}"), name,
+                                    EntityType::Function, path.into(),
+                                    child.start_position().row as u32 + 1,
+                                    child.end_position().row as u32 + 1,
+                                    lang, None,
+                                );
+                                entities.push((entity, val));
+                            }
+                        }
+                    }
+                }
+            }
+            "class_declaration" | "class" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = self.node_text(name_node, source);
+                    let entity = CodeEntity::new(
+                        format!("{path}::{name}"), name.clone(),
+                        EntityType::Class, path.into(),
+                        node.start_position().row as u32 + 1,
+                        node.end_position().row as u32 + 1,
+                        lang, None,
+                    );
+                    entities.push((entity, node));
+
+                    // Collect methods inside the class body
+                    if let Some(body) = node.child_by_field_name("body") {
+                        let mut body_cursor = body.walk();
+                        for member in body.named_children(&mut body_cursor) {
+                            if member.kind() == "method_definition" {
+                                if let Some(mname_node) = member.child_by_field_name("name") {
+                                    let mname = self.node_text(mname_node, source);
+                                    let method = CodeEntity::new(
+                                        format!("{path}::{name}.{mname}"), mname,
+                                        EntityType::Method, path.into(),
+                                        member.start_position().row as u32 + 1,
+                                        member.end_position().row as u32 + 1,
+                                        lang, None,
+                                    );
+                                    entities.push((method, member));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                for child in node.named_children(&mut cursor) {
+                    entities.extend(self.collect_js_entities(child, source, path, lang));
+                }
+            }
+        }
+
+        entities
+    }
+
+    /// Finds call expressions in a JS/TS node subtree.
+    fn find_js_calls<'a>(&self, node: Node<'a>, source: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut cursor = node.walk();
+
+        for child in node.named_children(&mut cursor) {
+            if child.kind() == "call_expression" {
+                // call_expression → function: identifier | member_expression
+                if let Some(func) = child.named_child(0) {
+                    let txt = self.node_text(func, source).trim().to_string();
+                    if !txt.is_empty() {
+                        // Strip `this.` prefix for method calls
+                        let name = if let Some(rest) = txt.strip_prefix("this.") {
+                            rest.to_string()
+                        } else {
+                            txt
+                        };
+                        names.push(name);
+                    }
+                }
+            }
+            names.extend(self.find_js_calls(child, source));
+        }
+
+        names
+    }
+
+    /// Extracts ES module import statements.
+    fn extract_js_imports(&self, node: Node, source: &str, file: &str) -> Vec<Import> {
+        let mut imports = Vec::new();
+        let mut cursor = node.walk();
+
+        for child in node.named_children(&mut cursor) {
+            if child.kind() == "import_statement" {
+                // import { foo, bar } from './module'
+                // import defaultExport from './module'
+                let source_str = child.named_children(&mut child.walk())
+                    .find(|n| n.kind() == "string")
+                    .map(|n| {
+                        let raw = self.node_text(n, source);
+                        raw.trim_matches('"').trim_matches('\'').to_string()
+                    })
+                    .unwrap_or_default();
+
+                // Collect imported names from named imports
+                let mut cursor2 = child.walk();
+                for import_clause in child.named_children(&mut cursor2) {
+                    if import_clause.kind() == "import_clause" {
+                        let mut clause_cursor = import_clause.walk();
+                        for item in import_clause.named_children(&mut clause_cursor) {
+                            match item.kind() {
+                                "identifier" => {
+                                    let name = self.node_text(item, source);
+                                    imports.push(Import {
+                                        source_file: file.to_string(),
+                                        module_path: source_str.clone(),
+                                        symbol: Some(name.clone()),
+                                        alias: None,
+                                        imported_name: name,
+                                    });
+                                }
+                                "named_imports" => {
+                                    let mut ni_cursor = item.walk();
+                                    for spec in item.named_children(&mut ni_cursor) {
+                                        if spec.kind() == "import_specifier" {
+                                            let spec_name = spec.named_child(0)
+                                                .map(|n| self.node_text(n, source))
+                                                .unwrap_or_default();
+                                            let alias = if spec.named_child_count() > 1 {
+                                                spec.named_child(1).map(|n| self.node_text(n, source))
+                                            } else { None };
+                                            let imported_name = alias.clone()
+                                                .unwrap_or_else(|| spec_name.clone());
+                                            imports.push(Import {
+                                                source_file: file.to_string(),
+                                                module_path: source_str.clone(),
+                                                symbol: Some(spec_name),
+                                                alias,
+                                                imported_name,
+                                            });
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        imports
+    }
+
     fn extract_python_imports(
         &self,
         node: Node,
@@ -640,11 +861,66 @@ mod tests {
         assert!(CodeParser::new("python").is_ok());
         assert!(CodeParser::new("rs").is_ok());
         assert!(CodeParser::new("auto").is_ok());
+        assert!(CodeParser::new("javascript").is_ok());
+        assert!(CodeParser::new("typescript").is_ok());
+        assert!(CodeParser::new("js").is_ok());
+        assert!(CodeParser::new("ts").is_ok());
     }
 
     #[test]
     fn unsupported_language() {
         assert!(CodeParser::new("cobol").is_err());
+    }
+
+    #[test]
+    fn parse_javascript_function() {
+        let source = "function greet(name) { return name; }\n";
+        let entities = CodeParser::new("javascript")
+            .unwrap()
+            .parse_source("app.js", source)
+            .unwrap();
+        assert_eq!(entities.len(), 1);
+        assert_eq!(entities[0].name, "greet");
+        assert_eq!(entities[0].language, Language::JavaScript);
+        assert_eq!(entities[0].entity_type, EntityType::Function);
+    }
+
+    #[test]
+    fn parse_javascript_arrow_function() {
+        let source = "const add = (a, b) => a + b;\n";
+        let entities = CodeParser::new("javascript")
+            .unwrap()
+            .parse_source("utils.js", source)
+            .unwrap();
+        assert_eq!(entities.len(), 1);
+        assert_eq!(entities[0].name, "add");
+        assert_eq!(entities[0].entity_type, EntityType::Function);
+    }
+
+    #[test]
+    fn parse_typescript_class() {
+        let source = "class Auth {\n  login() {}\n  logout() {}\n}\n";
+        let entities = CodeParser::new("typescript")
+            .unwrap()
+            .parse_source("auth.ts", source)
+            .unwrap();
+        // 1 class + 2 methods = 3 entities
+        assert_eq!(entities.len(), 3);
+        let names: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"Auth"));
+        assert!(names.contains(&"login"));
+        assert!(names.contains(&"logout"));
+    }
+
+    #[test]
+    fn parse_javascript_class_with_methods() {
+        let source = "class Dog {\n  bark() { console.log('woof'); }\n}\n";
+        let entities = CodeParser::new("javascript")
+            .unwrap()
+            .parse_source("dog.js", source)
+            .unwrap();
+        assert!(entities.iter().any(|e| e.entity_type == EntityType::Class));
+        assert!(entities.iter().any(|e| e.entity_type == EntityType::Method));
     }
 
     #[test]

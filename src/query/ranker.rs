@@ -53,6 +53,7 @@ pub fn rank_files(scored_entities: Vec<ScoredEntity>, top_k: usize) -> Vec<Relev
             relevance_score: best.score,
             reason: best.reason.clone(),
             entities: entities.into_iter().map(|se| se.entity).collect(),
+            stale_warning: None, // populated by QueryEngine after ranking
         }
     }).collect();
 

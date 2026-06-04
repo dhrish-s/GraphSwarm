@@ -100,7 +100,19 @@ impl QueryEngine {
             }
         }
 
-        Ok(rank_files(scored, top_k))
+        let mut results = rank_files(scored, top_k);
+
+        // Attach stale warnings: files that changed on disk but haven't been
+        // re-indexed yet. The watcher marks files stale until reconciling finishes.
+        for result in &mut results {
+            if self.store.is_stale(&result.file_path).unwrap_or(false) {
+                result.stale_warning = Some(
+                    "File has pending changes — re-indexing in progress".to_string()
+                );
+            }
+        }
+
+        Ok(results)
     }
 
     /// Returns a reference to the underlying `GraphStore`.

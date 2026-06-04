@@ -6,6 +6,7 @@ pub mod query;
 pub mod mcp;
 pub mod cli;
 pub mod utils;
+pub mod watcher;
 
 /// Re-exports for ergonomic library usage.
 pub mod prelude {

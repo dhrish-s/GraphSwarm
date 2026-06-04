@@ -246,6 +246,13 @@ impl CodeIndexer {
     pub fn language(&self) -> &str {
         self.parser.language()
     }
+
+    /// Returns a reference to the underlying `CodeParser`.
+    ///
+    /// Used by the Reconciler to parse a single file without a full directory scan.
+    pub fn parser_ref(&self) -> &CodeParser {
+        &self.parser
+    }
 }
 
 #[cfg(test)]

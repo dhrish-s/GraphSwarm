@@ -94,7 +94,7 @@ impl McpServer {
     }
 
     /// Handles a single MCP request and returns the JSON-serializable response.
-    pub(crate) fn handle_request(
+    pub fn handle_request(
         &self,
         req: McpRequest,
         state: Option<&GraphSwarmState>,

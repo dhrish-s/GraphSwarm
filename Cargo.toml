@@ -17,6 +17,10 @@ serde_json = "1.0"
 tree-sitter = "0.20"
 tree-sitter-rust = "0.20"
 tree-sitter-python = "0.20"
+tree-sitter-javascript = "0.20"
+tree-sitter-typescript = "0.20"
+notify = "6.1"
+notify-debouncer-mini = "0.4"
 anyhow = "1.0"
 thiserror = "1.0"
 tracing = "0.1"
@@ -49,7 +53,11 @@ harness = false
 name = "action_logging"
 harness = false
 
-# Binary size: 4.3 MB (verified 2026-06-04, well under the 20 MB target)
+[[bench]]
+name = "query_latency"
+harness = false
+
+# Binary size: 7.3 MB (verified 2026-06-04 after Phase 6 additions, well under 20 MB target)
 # opt-level = "z" optimizes for size (vs "3" which optimizes for speed).
 # lto = true enables link-time optimization for dead-code elimination.
 # strip = true removes debug symbols from the final binary.

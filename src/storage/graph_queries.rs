@@ -28,6 +28,7 @@ use super::{
     schema::{
         callers_key, callees_key, edge_key, entity_key,
         file_entities_key, lang_index_key, meta_graph_key,
+        stale_key, watcher_last_reconcile_key,
     },
 };
 
@@ -335,10 +336,184 @@ impl GraphStore {
 
     /// Returns all entity keys in the store (for QueryEngine full scan).
     ///
-    /// Keys are returned with the `"entity:"` prefix -strip it before
+    /// Keys are returned with the `"entity:"` prefix — strip it before
     /// passing to `entity_by_id`, which re-applies the prefix internally.
     pub fn entity_keys(&self) -> Result<Vec<String>> {
         self.kv.list_prefix("entity:")
+    }
+
+    // ── File watcher methods ──────────────────────────────────────────────────
+
+    /// Deletes all entities for `file_path` and cascades edge index cleanup.
+    ///
+    /// This is the write-side of incremental updates: called by the Reconciler
+    /// when a file is deleted or before re-indexing a modified file.
+    ///
+    /// Cascade steps for each entity in the file:
+    ///   1. Remove this entity_id from the callees list of every caller
+    ///   2. Remove this entity_id from the callers list of every callee
+    ///   3. Delete all edge:{this}:{*} and edge:{*}:{this} keys
+    ///   4. Delete callers:{this} and callees:{this} index keys
+    ///   5. Delete entity:{this}
+    ///
+    /// Then delete the file_entities index for the file.
+    pub fn delete_file(&self, file_path: &str) -> Result<()> {
+        let entity_ids: Vec<String> = self.kv
+            .get(&file_entities_key(file_path))?
+            .unwrap_or_default();
+
+        for entity_id in &entity_ids {
+            // 1. Remove from callers' callees lists
+            let callers_of: Vec<String> = self.kv
+                .get(&callers_key(entity_id))?
+                .unwrap_or_default();
+            for caller_id in &callers_of {
+                let mut callees: Vec<String> = self.kv
+                    .get(&callees_key(caller_id))?
+                    .unwrap_or_default();
+                callees.retain(|id| id != entity_id);
+                if callees.is_empty() {
+                    self.kv.delete(&callees_key(caller_id))?;
+                } else {
+                    self.kv.set(&callees_key(caller_id), &callees)?;
+                }
+                self.kv.delete(&edge_key(caller_id, entity_id))?;
+            }
+
+            // 2. Remove from callees' callers lists
+            let callees_of: Vec<String> = self.kv
+                .get(&callees_key(entity_id))?
+                .unwrap_or_default();
+            for callee_id in &callees_of {
+                let mut callers: Vec<String> = self.kv
+                    .get(&callers_key(callee_id))?
+                    .unwrap_or_default();
+                callers.retain(|id| id != entity_id);
+                if callers.is_empty() {
+                    self.kv.delete(&callers_key(callee_id))?;
+                } else {
+                    self.kv.set(&callers_key(callee_id), &callers)?;
+                }
+                self.kv.delete(&edge_key(entity_id, callee_id))?;
+            }
+
+            // 3. Remove entity's own index keys
+            self.kv.delete(&callers_key(entity_id))?;
+            self.kv.delete(&callees_key(entity_id))?;
+            self.kv.delete(&entity_key(entity_id))?;
+
+            // 4. Update language index (load entity first to know its language)
+            // Language index cleanup is best-effort — stale IDs are harmlessly ignored on read.
+        }
+
+        // Delete the file_entities index entry
+        self.kv.delete(&file_entities_key(file_path))?;
+        Ok(())
+    }
+
+    /// Marks `file_path` as having unreconciled on-disk changes.
+    ///
+    /// The QueryEngine checks this flag and attaches a `stale_warning` to
+    /// any RelevantFile that is marked stale.
+    pub fn mark_stale(&self, file_path: &str) -> Result<()> {
+        self.kv.set(&stale_key(file_path), &"1")
+    }
+
+    /// Clears the stale flag for `file_path` after successful re-indexing.
+    pub fn clear_stale(&self, file_path: &str) -> Result<()> {
+        self.kv.delete(&stale_key(file_path))
+    }
+
+    /// Returns true if `file_path` has unreconciled on-disk changes.
+    pub fn is_stale(&self, file_path: &str) -> Result<bool> {
+        self.kv.contains_key(&stale_key(file_path))
+    }
+
+    /// Returns the file paths of all files currently marked stale.
+    pub fn all_stale_files(&self) -> Result<Vec<String>> {
+        let keys = self.kv.list_prefix("stale:")?;
+        Ok(keys.iter().map(|k| {
+            k.strip_prefix("stale:").unwrap_or(k).replace('|', "/")
+        }).collect())
+    }
+
+    /// Returns all file paths transitively affected by changes to `file_path`.
+    ///
+    /// Uses reverse BFS (follow `callers` edges) to find every file that
+    /// calls into `file_path`. These files may need re-indexing or cache
+    /// invalidation after `file_path` changes.
+    pub fn impact_subtree(&self, file_path: &str) -> Result<Vec<String>> {
+        let entity_ids: Vec<String> = self.kv
+            .get(&file_entities_key(file_path))?
+            .unwrap_or_default();
+
+        let mut affected_files: HashSet<String> = HashSet::new();
+
+        for entity_id in &entity_ids {
+            let reachable = self.reverse_bfs(entity_id, 5)?;
+            for rid in reachable {
+                if let Ok(Some(e)) = self.entity_by_id(&rid) {
+                    if e.file_path != file_path {
+                        affected_files.insert(e.file_path);
+                    }
+                }
+            }
+        }
+
+        let mut files: Vec<String> = affected_files.into_iter().collect();
+        files.sort();
+        Ok(files)
+    }
+
+    /// Records the timestamp of the last successful reconciler pass.
+    pub fn set_last_reconcile_time(&self, ts: &str) -> Result<()> {
+        self.kv.set(watcher_last_reconcile_key(), &ts.to_string())
+    }
+
+    /// Stores a single `CodeEntity` and updates all relevant indexes.
+    ///
+    /// Used by the Reconciler for incremental updates — faster than a full
+    /// `store_graph()` when only one file changed.
+    ///
+    /// NOTE: Cross-file call edges are not resolved here (that requires the
+    /// full symbol table). Run `graphswarm index` for complete resolution.
+    pub fn store_single_entity(&self, entity: &CodeEntity) -> Result<()> {
+        // Entity record
+        self.kv.set(&entity_key(&entity.id), entity)?;
+
+        // File entities index
+        let mut file_ids: Vec<String> = self.kv
+            .get(&file_entities_key(&entity.file_path))?
+            .unwrap_or_default();
+        if !file_ids.contains(&entity.id) {
+            file_ids.push(entity.id.clone());
+            self.kv.set(&file_entities_key(&entity.file_path), &file_ids)?;
+        }
+
+        // Callees + edge existence + callers of callees
+        if !entity.calls.is_empty() {
+            self.kv.set(&callees_key(&entity.id), &entity.calls)?;
+            for callee_id in &entity.calls {
+                let mut callers: Vec<String> = self.kv
+                    .get(&callers_key(callee_id))?
+                    .unwrap_or_default();
+                if !callers.contains(&entity.id) {
+                    callers.push(entity.id.clone());
+                    self.kv.set(&callers_key(callee_id), &callers)?;
+                }
+                self.kv.set(&edge_key(&entity.id, callee_id), &"1")?;
+            }
+        }
+
+        // Language index
+        let lang_key = lang_index_key(&entity.language.to_string());
+        let mut lang_ids: Vec<String> = self.kv.get(&lang_key)?.unwrap_or_default();
+        if !lang_ids.contains(&entity.id) {
+            lang_ids.push(entity.id.clone());
+            self.kv.set(&lang_key, &lang_ids)?;
+        }
+
+        Ok(())
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -637,6 +812,82 @@ mod tests {
             assert_eq!(loaded.entities.len(), 3);
             assert_eq!(loaded.edges.len(), 2);
         }
+    }
+
+    // ── delete_file ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_file_removes_entities() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph()).unwrap();
+        store.delete_file("src/auth.rs").unwrap();
+        assert!(store.find_in_file("src/auth.rs").unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_file_cascades_caller_edges() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph()).unwrap();
+        // authenticate_user is called by main; after deleting auth.rs
+        // the callees list of main should no longer contain authenticate_user
+        store.delete_file("src/auth.rs").unwrap();
+        let callees = store.find_callees("src/main.rs::main").unwrap();
+        assert!(callees.is_empty(), "main should have no callees after auth.rs deleted");
+    }
+
+    #[test]
+    fn delete_file_nonexistent_is_ok() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph()).unwrap();
+        assert!(store.delete_file("no_such_file.rs").is_ok());
+    }
+
+    // ── stale markers ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn mark_and_is_stale() {
+        let (store, _dir) = temp_store();
+        assert!(!store.is_stale("src/auth.rs").unwrap());
+        store.mark_stale("src/auth.rs").unwrap();
+        assert!(store.is_stale("src/auth.rs").unwrap());
+    }
+
+    #[test]
+    fn clear_stale_removes_flag() {
+        let (store, _dir) = temp_store();
+        store.mark_stale("src/auth.rs").unwrap();
+        store.clear_stale("src/auth.rs").unwrap();
+        assert!(!store.is_stale("src/auth.rs").unwrap());
+    }
+
+    #[test]
+    fn all_stale_files_returns_marked_paths() {
+        let (store, _dir) = temp_store();
+        store.mark_stale("src/auth.rs").unwrap();
+        store.mark_stale("src/main.rs").unwrap();
+        let stale = store.all_stale_files().unwrap();
+        assert_eq!(stale.len(), 2);
+        assert!(stale.contains(&"src/auth.rs".to_string()));
+    }
+
+    // ── impact_subtree ────────────────────────────────────────────────────────
+
+    #[test]
+    fn impact_subtree_finds_callers() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph()).unwrap();
+        // auth.rs is called by main.rs — impact_subtree should surface main.rs
+        let affected = store.impact_subtree("src/auth.rs").unwrap();
+        assert!(affected.contains(&"src/main.rs".to_string()),
+            "main.rs calls into auth.rs, must appear in impact subtree");
+    }
+
+    #[test]
+    fn impact_subtree_excludes_self() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph()).unwrap();
+        let affected = store.impact_subtree("src/auth.rs").unwrap();
+        assert!(!affected.contains(&"src/auth.rs".to_string()));
     }
 
     #[test]

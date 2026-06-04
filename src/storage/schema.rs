@@ -110,6 +110,28 @@ pub fn history_count_key(file_path: &str) -> String {
     format!("history:count:{}", encoded)
 }
 
+// ── File watcher schema ───────────────────────────────────────────────────
+//
+// Stale markers: files that have on-disk changes not yet reconciled.
+//   stale:{encoded_path}  → "1"  (presence = stale; deletion = clean)
+//
+// Reconciler heartbeat (last time the watcher loop ran successfully):
+//   watcher:last_reconcile → RFC3339 timestamp string
+
+/// Key marking a source file as having unreconciled on-disk changes.
+///
+/// Written by the Reconciler when a change is detected, cleared after
+/// re-indexing succeeds. Query results include a warning while this is set.
+pub fn stale_key(file_path: &str) -> String {
+    let encoded = file_path.replace(['/', '\\'], "|");
+    format!("stale:{encoded}")
+}
+
+/// Singleton key for the last successful reconciler pass timestamp.
+pub fn watcher_last_reconcile_key() -> &'static str {
+    "watcher:last_reconcile"
+}
+
 /// Time-ordered key for error actions only.
 ///
 /// Mirrors history_recent_key but scoped to errors so recent_errors()
@@ -205,6 +227,19 @@ mod tests {
         let k2 = history_count_key("src\\auth.rs");
         assert!(!k2.contains('\\'), "backslash must be encoded");
         assert!(k2.contains('|'));
+    }
+
+    #[test]
+    fn stale_key_encodes_path() {
+        let k = stale_key("src/auth.rs");
+        assert!(k.starts_with("stale:"));
+        assert!(!k.contains('/'));
+        assert!(k.contains('|'));
+    }
+
+    #[test]
+    fn watcher_last_reconcile_key_is_stable() {
+        assert_eq!(watcher_last_reconcile_key(), "watcher:last_reconcile");
     }
 
     #[test]
