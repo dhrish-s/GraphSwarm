@@ -1,16 +1,13 @@
 use clap::Args;
 use crate::error::Result;
 use crate::mcp::McpServer;
+use std::path::PathBuf;
 
 #[derive(Args)]
 pub struct ServerCommand {
-    /// Server port
-    #[arg(short, long, default_value = "3000")]
-    pub port: u16,
-
-    /// Path to index file
-    #[arg(long, default_value = ".graphswarm/index.db")]
-    pub index: String,
+    /// Path to repository root (where .graphswarm_db lives)
+    #[arg(long, default_value = ".")]
+    pub path: String,
 
     /// Log level
     #[arg(long, default_value = "info")]
@@ -19,7 +16,9 @@ pub struct ServerCommand {
 
 impl ServerCommand {
     pub async fn execute(&self) -> Result<()> {
-        let server = McpServer::new(self.port);
-        server.start().await
+        let db_path = PathBuf::from(&self.path).join(".graphswarm_db");
+        let server  = McpServer::new(db_path);
+        // run() blocks until stdin closes (MCP client exits)
+        server.run()
     }
 }

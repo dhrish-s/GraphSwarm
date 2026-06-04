@@ -1,12 +1,12 @@
-//! Example: start the MCP server.
+//! Example: start the MCP stdio server.
 //!
-//! Usage: cargo run --example run_mcp_server
+//! Run `graphswarm index .` first, then:
+//!   cargo run --example run_mcp_server
 
 use graphswarm::mcp::McpServer;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let server = McpServer::new(3000);
-    server.start().await?;
+fn main() -> anyhow::Result<()> {
+    let server = McpServer::new(".graphswarm_db");
+    server.run()?;
     Ok(())
 }
