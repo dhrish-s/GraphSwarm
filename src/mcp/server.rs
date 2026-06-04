@@ -21,7 +21,7 @@
 //!
 //! Thread safety: McpServer is single-threaded.
 //! Tool calls are synchronous. The ActionLogger background task runs in
-//! a Tokio runtime — the server itself uses blocking stdio I/O, which
+//! a Tokio runtime -the server itself uses blocking stdio I/O, which
 //! is correct because MCP clients send one request at a time.
 
 use std::io::{self, BufRead, Write};
@@ -40,7 +40,7 @@ use crate::tracker::History;
 pub struct McpServer {
     /// Path to the `.graphswarm_db` sled directory.
     db_path: PathBuf,
-    /// HTTP port — unused for stdio transport, kept for the HTTP future (Part 7).
+    /// HTTP port -unused for stdio transport, kept for the HTTP future (Part 7).
     pub port: u16,
 }
 
@@ -52,7 +52,7 @@ impl McpServer {
 
     /// Runs the MCP stdio server until stdin closes.
     ///
-    /// Blocking call — loops forever until the client disconnects.
+    /// Blocking call -loops forever until the client disconnects.
     pub fn run(&self) -> Result<()> {
         let state = self.open_state();
 
@@ -105,7 +105,7 @@ impl McpServer {
             "initialize" => serde_json::to_value(McpResponse::initialize(req.id)).unwrap(),
 
             // ── Notification: client acknowledges init ─────────────────────────
-            // JSON-RPC notifications have no id — clients ignore our reply.
+            // JSON-RPC notifications have no id -clients ignore our reply.
             "notifications/initialized" => {
                 serde_json::to_value(McpResponse::empty(None)).unwrap()
             }
@@ -176,10 +176,9 @@ impl McpServer {
         }
 
         let kv = KvBackend::open(&self.db_path).ok()?;
-        // Create separate instances from the same Arc-backed KvBackend.
-        let engine = QueryEngine::new(GraphStore::new(kv.clone()), History::new(kv.clone()));
-        let store  = GraphStore::new(kv);
-        Some(GraphSwarmState { engine, store })
+        let engine = QueryEngine::new(GraphStore::new(kv.clone()), History::new(kv));
+        // GraphStore is accessible via engine.store() -no second clone needed.
+        Some(GraphSwarmState { engine })
     }
 
     pub fn port(&self) -> u16 { self.port }
@@ -234,13 +233,11 @@ mod tests {
 
     fn make_state_with_graph(dir: &TempDir) -> GraphSwarmState {
         let db_path = dir.path().join(".graphswarm_db");
-        let kv = KvBackend::open(&db_path).unwrap();
-        let store_e = GraphStore::new(kv.clone());
-        store_e.store_graph(&make_test_graph()).unwrap();
-        let engine = QueryEngine::new(store_e, History::new(kv.clone()));
-        let store  = GraphStore::new(kv);
+        let kv    = KvBackend::open(&db_path).unwrap();
+        let store = GraphStore::new(kv.clone());
         store.store_graph(&make_test_graph()).unwrap();
-        GraphSwarmState { engine, store }
+        let engine = QueryEngine::new(store, History::new(kv));
+        GraphSwarmState { engine }
     }
 
     // ── McpServer::new / port ─────────────────────────────────────────────────

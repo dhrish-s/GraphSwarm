@@ -106,12 +106,12 @@ impl IndexCommand {
         println!("Graph persisted to: {}", db_path.display());
 
         // Start the action tracker background task.
-        // ActionLogger::new() spawns a Tokio task — it is zero-cost to start.
+        // ActionLogger::new() spawns a Tokio task -it is zero-cost to start.
         // The task runs until the process exits, logging every agent action
         // to the same sled database that holds the call graph.
         let logger = ActionLogger::new(kv);
         // Log the index operation itself as the first tracked action.
-        // .ok() — a tracker failure must never crash the indexer.
+        // .ok() -a tracker failure must never crash the indexer.
         logger.log_file_read(&self.path).await.ok();
         println!("Action tracker started.");
 

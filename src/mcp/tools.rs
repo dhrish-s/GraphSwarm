@@ -16,14 +16,13 @@ use serde_json::Value;
 use crate::error::Result;
 use crate::mcp::protocol::{ContentBlock, ToolDefinition};
 use crate::query::QueryEngine;
-use crate::storage::GraphStore;
 
 /// Shared state passed to every tool handler.
-/// All internals are Arc-backed (via KvBackend), so constructing this
-/// from a single sled::Db costs only a few Arc reference increments.
+///
+/// Only `engine` is stored -raw store access goes through `engine.store()`,
+/// which avoids keeping a second clone of the same sled::Db Arc.
 pub struct GraphSwarmState {
     pub engine: QueryEngine,
-    pub store:  GraphStore,
 }
 
 /// Returns all tool definitions for the `tools/list` response.
@@ -155,7 +154,7 @@ fn handle_query_graph(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
         ))]);
     }
 
-    let mut lines = vec![format!("Query: \"{query}\" — top {} result(s)\n", results.len())];
+    let mut lines = vec![format!("Query: \"{query}\" -top {} result(s)\n", results.len())];
 
     for (i, r) in results.iter().enumerate() {
         lines.push(format!(
@@ -185,7 +184,7 @@ fn handle_get_callers(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
         crate::error::Error::query("get_callers requires an 'entity_id' string argument")
     })?;
 
-    let callers = state.store.find_callers(entity_id)?;
+    let callers = state.engine.store().find_callers(entity_id)?;
 
     if callers.is_empty() {
         return Ok(vec![ContentBlock::text(format!(
@@ -208,7 +207,7 @@ fn handle_get_callees(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
         crate::error::Error::query("get_callees requires an 'entity_id' string argument")
     })?;
 
-    let callees = state.store.find_callees(entity_id)?;
+    let callees = state.engine.store().find_callees(entity_id)?;
 
     if callees.is_empty() {
         return Ok(vec![ContentBlock::text(format!(
@@ -334,14 +333,11 @@ mod tests {
 
     fn make_test_state() -> (GraphSwarmState, TempDir) {
         let dir = TempDir::new().unwrap();
-        let kv = KvBackend::open(dir.path()).unwrap();
-        let store_for_engine = GraphStore::new(kv.clone());
-        let history = History::new(kv.clone());
-        store_for_engine.store_graph(&make_test_graph()).unwrap();
-        let engine = QueryEngine::new(store_for_engine, history);
-        let store  = GraphStore::new(kv);
+        let kv  = KvBackend::open(dir.path()).unwrap();
+        let store = GraphStore::new(kv.clone());
         store.store_graph(&make_test_graph()).unwrap();
-        (GraphSwarmState { engine, store }, dir)
+        let engine = QueryEngine::new(store, History::new(kv));
+        (GraphSwarmState { engine }, dir)
     }
 
     // ── tool_definitions ──────────────────────────────────────────────────────
@@ -437,7 +433,7 @@ mod tests {
     #[test]
     fn shortest_path_no_path_returns_helpful_message() {
         let (state, _dir) = make_test_state();
-        // verify_token does NOT call main — no path in that direction
+        // verify_token does NOT call main -no path in that direction
         let args = serde_json::json!({
             "from": "src/auth.rs::verify_token",
             "to":   "src/main.rs::main"
@@ -449,7 +445,7 @@ mod tests {
     #[test]
     fn query_graph_top_k_clamped_to_max_20() {
         let (state, _dir) = make_test_state();
-        // top_k=100 should be clamped to 20 — no panic
+        // top_k=100 should be clamped to 20 -no panic
         let args = serde_json::json!({"query": "authenticate", "top_k": 100});
         assert!(dispatch("query_graph", &args, &state).is_ok());
     }

@@ -3,14 +3,14 @@
 //! Each function scores one signal and returns a value in [0.0, 1.0].
 //! The QueryEngine combines them with fixed weights into a final score.
 //!
-//! Design principle: every function is PURE — no side effects, no I/O.
+//! Design principle: every function is PURE -no side effects, no I/O.
 //! This makes them trivially testable and easy to reason about.
 //!
 //! The four signals:
-//!   name_score      — text match between query tokens and entity names
-//!   graph_score     — graph distance from query-matching entities
-//!   recency_score   — how recently the agent accessed this file
-//!   docstring_score — text match in docstrings
+//!   name_score      -text match between query tokens and entity names
+//!   graph_score     -graph distance from query-matching entities
+//!   recency_score   -how recently the agent accessed this file
+//!   docstring_score -text match in docstrings
 
 /// Scores how well an entity's name matches the query tokens.
 ///
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn name_score_exact_match() {
         // "authenticate user" tokenizes to ["authenticate","user"]
-        // "authenticate_user" also tokenizes to those two — full match
+        // "authenticate_user" also tokenizes to those two -full match
         let s = name_score("authenticate_user", "authenticate user");
         assert!((s - 1.0).abs() < f64::EPSILON, "expected 1.0, got {s}");
     }

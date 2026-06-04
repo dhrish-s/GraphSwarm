@@ -1,10 +1,10 @@
-//! Public QueryEngine — the single entry point for all query operations.
+//! Public QueryEngine -the single entry point for all query operations.
 //!
 //! The QueryEngine orchestrates:
-//!   1. GraphStore (Part 2) — call graph lookups
-//!   2. History (Part 3)    — access history for recency signal
-//!   3. Relevance scoring   — four signals combined
-//!   4. Ranker              — group by file, sort, top-K
+//!   1. GraphStore (Part 2) -call graph lookups
+//!   2. History (Part 3)    -access history for recency signal
+//!   3. Relevance scoring   -four signals combined
+//!   4. Ranker              -group by file, sort, top-K
 //!
 //! The query() method:
 //!   - Scans all entities via GraphStore
@@ -16,6 +16,8 @@
 //! QueryEngine with cloned backends costs only two Arc increments.
 
 use std::collections::{HashMap, HashSet, VecDeque};
+
+use chrono::Utc;
 
 use crate::error::Result;
 use crate::indexer::extractor::CodeEntity;
@@ -40,7 +42,7 @@ pub struct QueryEngine {
 impl QueryEngine {
     /// Creates a new QueryEngine backed by the given store and history.
     ///
-    /// Both are cheap to clone — sled::Db is Arc-backed internally.
+    /// Both are cheap to clone -sled::Db is Arc-backed internally.
     pub fn new(store: GraphStore, history: History) -> Self {
         Self { store, history }
     }
@@ -48,7 +50,9 @@ impl QueryEngine {
     /// Finds the top-K most relevant files for a natural language query.
     ///
     /// Algorithm:
-    /// 1. Load recently accessed files from History (for recency signal)
+    /// 1. Precompute recency map: for each recently-accessed file, call
+    ///    `history.file_last_accessed()` to get its real timestamp and compute
+    ///    elapsed seconds. This is O(50 * k) for k history records.
     /// 2. List all entity keys from GraphStore
     /// 3. Score each entity against the query with four weighted signals
     /// 4. Filter zero-score entities (they add noise, not signal)
@@ -61,32 +65,50 @@ impl QueryEngine {
             return Ok(Vec::new());
         }
 
-        // Load recent files once — O(prefix_scan) — for the recency signal.
-        let recent: HashSet<String> = self.history
-            .recent_files(50)
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+        // Precompute recency signal: file_path → elapsed_seconds_since_last_access.
+        // We call file_last_accessed() for each of the top-50 recently-accessed files.
+        // Each call scans history:recent: (O(k)) -total O(50*k).
+        // The result is O(1) lookups during scoring.
+        let recency: HashMap<String, f64> = {
+            let now = Utc::now();
+            let recent_files = self.history.recent_files(50).unwrap_or_default();
+            let mut map = HashMap::with_capacity(recent_files.len());
+            for file_path in recent_files {
+                if let Ok(Some(ts)) = self.history.file_last_accessed(&file_path) {
+                    let elapsed = (now - ts).num_seconds().max(0) as f64;
+                    map.insert(file_path, elapsed);
+                }
+            }
+            map
+        };
 
         // entity_keys() returns "entity:<id>" strings.
         let entity_keys = self.store.entity_keys()?;
         let mut scored = Vec::with_capacity(entity_keys.len() / 4 + 1);
 
         for key in &entity_keys {
-            // Strip "entity:" prefix — entity_by_id re-applies it internally.
+            // Strip "entity:" prefix -entity_by_id re-applies it internally.
             let id = key.strip_prefix("entity:").unwrap_or(key);
             if let Some(entity) = self.store.entity_by_id(id)? {
-                let score = self.score_entity(&entity, q, &recent);
+                let score = self.score_entity(&entity, q, &recency);
                 if score > 0.0 {
-                    let distance  = self.graph_distance_to_query(&entity, q);
-                    let secs_ago  = Self::seconds_since_access_approx(&entity.file_path, &recent);
-                    let reason    = build_reason(&entity, q, distance, secs_ago);
+                    let distance = self.graph_distance_to_query(&entity, q);
+                    let secs_ago = recency.get(&entity.file_path).copied();
+                    let reason   = build_reason(&entity, q, distance, secs_ago);
                     scored.push(ScoredEntity { entity, score, reason });
                 }
             }
         }
 
         Ok(rank_files(scored, top_k))
+    }
+
+    /// Returns a reference to the underlying `GraphStore`.
+    ///
+    /// Used by `McpServer` tool handlers that need raw store access
+    /// (e.g. `find_callers`, `find_callees`) without holding a second clone.
+    pub fn store(&self) -> &GraphStore {
+        &self.store
     }
 
     /// Returns full details about a single entity by id.
@@ -113,20 +135,18 @@ impl QueryEngine {
     /// Computes the combined relevance score for one entity.
     ///
     /// Final score = W_NAME*name + W_GRAPH*graph + W_RECENCY*recency + W_DOCSTRING*doc
-    fn score_entity(&self, entity: &CodeEntity, query: &str, recent_files: &HashSet<String>) -> f64 {
+    fn score_entity(&self, entity: &CodeEntity, query: &str, recency: &HashMap<String, f64>) -> f64 {
         // Signal 1: name match (weight 0.4)
         // We also score against file_path so "src" matches "src/auth.rs".
         let s_name = name_score(&entity.name, query)
             .max(name_score(&entity.file_path, query));
 
         // Signal 2: graph distance (weight 0.3)
-        // We use a fast O(degree) approximation instead of full BFS per entity.
-        // Full BFS would be O(V*E) — too slow for large repos.
-        // The approximation checks immediate neighbors only (depth ≤ 2).
+        // O(degree) approximation; full BFS would be O(V*E) -too slow.
         let s_graph = graph_score(self.approx_graph_distance(entity, query));
 
-        // Signal 3: recency (weight 0.2)
-        let s_recency = recency_score(Self::seconds_since_access_approx(&entity.file_path, recent_files));
+        // Signal 3: recency (weight 0.2) -real elapsed seconds from precomputed map.
+        let s_recency = recency_score(recency.get(&entity.file_path).copied());
 
         // Signal 4: docstring (weight 0.1)
         let s_doc = docstring_score(entity.docstring.as_deref(), query);
@@ -140,7 +160,7 @@ impl QueryEngine {
     /// This is O(degree) per entity, not O(V*E) like full BFS.
     ///
     /// APPROXIMATION NOTE: this misses matches beyond 2 hops. Full BFS per
-    /// entity would be O(V*E) — prohibitive on large graphs. The approximation
+    /// entity would be O(V*E) -prohibitive on large graphs. The approximation
     /// is good enough for scoring and can be refined in Part 6 if needed.
     ///
     /// Returns usize::MAX when no match is found → graph_score returns 0.0.
@@ -179,19 +199,6 @@ impl QueryEngine {
         }
 
         usize::MAX
-    }
-
-    /// Returns elapsed seconds since this file was last accessed, or None if unknown.
-    ///
-    /// APPROXIMATION: we only know that the file is "recent" (in the last 50 accesses)
-    /// but don't have the exact timestamp here. We approximate as 1 hour (3600s).
-    /// Part 6 can refine this with exact timestamps from History.
-    fn seconds_since_access_approx(file_path: &str, recent_files: &HashSet<String>) -> Option<f64> {
-        if recent_files.contains(file_path) {
-            Some(3600.0) // approximation: "recently accessed" ≈ 1 hour ago
-        } else {
-            None
-        }
     }
 
     /// Returns the min graph distance to a name-matching node, or None if not nearby.
@@ -447,7 +454,7 @@ mod tests {
     #[test]
     fn path_unconnected_entities_returns_empty() {
         let (engine, _dir) = make_test_engine();
-        // verify_token does not call main — reverse direction has no path
+        // verify_token does not call main -reverse direction has no path
         let p = engine.path("src/auth.rs::verify_token", "src/main.rs::main").unwrap();
         assert!(p.is_empty());
     }

@@ -18,10 +18,10 @@ async fn main() -> anyhow::Result<()> {
     let results = engine.query("Fix payment timeout bug", 5)?;
 
     if results.is_empty() {
-        println!("No results — run `graphswarm index .` first.");
+        println!("No results -run `graphswarm index .` first.");
     }
     for r in results {
-        println!("{}: {:.3}  — {}", r.file_path, r.relevance_score, r.reason);
+        println!("{}: {:.3}  -{}", r.file_path, r.relevance_score, r.reason);
     }
     Ok(())
 }

@@ -1,14 +1,14 @@
 //! MCP (Model Context Protocol) server for GraphSwarm.
 //!
 //! Exposes GraphSwarm's code graph to AI agents (Claude Code, Cursor, etc.)
-//! via the MCP stdio protocol — JSON-RPC 2.0 over stdin/stdout.
+//! via the MCP stdio protocol -JSON-RPC 2.0 over stdin/stdout.
 //!
 //! Five tools:
-//!   query_graph    — natural language → ranked relevant files
-//!   get_callers    — who calls this entity?
-//!   get_callees    — what does this entity call?
-//!   shortest_path  — call chain from A to B
-//!   explain_entity — full entity details
+//!   query_graph    -natural language → ranked relevant files
+//!   get_callers    -who calls this entity?
+//!   get_callees    -what does this entity call?
+//!   shortest_path  -call chain from A to B
+//!   explain_entity -full entity details
 //!
 //! Usage:
 //!   graphswarm server           # start MCP server on stdio

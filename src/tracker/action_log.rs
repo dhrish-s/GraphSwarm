@@ -5,7 +5,7 @@
 //! use access history to boost relevance scoring.
 //!
 //! Design principle: AgentAction is a plain data struct with no
-//! behavior — just fields and serde. All logic lives in logger.rs
+//! behavior -just fields and serde. All logic lives in logger.rs
 //! and history.rs. This keeps the type easy to test and serialize.
 
 use chrono::{DateTime, Utc};
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn with_entity_is_chainable() {
-        // with_entity returns Self — both builder calls must succeed
+        // with_entity returns Self -both builder calls must succeed
         let action = AgentAction::new(ActionType::FileEdit, "b.rs")
             .with_entity("mod::fn")
             .with_metadata("lines_changed", serde_json::json!(42));

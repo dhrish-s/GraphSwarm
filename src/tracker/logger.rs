@@ -4,7 +4,7 @@
 //!
 //! Writing to disk takes microseconds to milliseconds. If we write
 //! synchronously on the query path, every query gets slower. Our target
-//! is < 1ms query latency — we cannot afford disk I/O there.
+//! is < 1ms query latency -we cannot afford disk I/O there.
 //!
 //! ## Solution: decouple logging with a Tokio channel
 //!
@@ -12,7 +12,7 @@
 //!
 //!   - Many callers can SEND actions into the channel (tx = transmitter).
 //!   - One background task RECEIVES from the channel (rx = receiver).
-//!   - Sending is non-blocking — it returns in ~100ns.
+//!   - Sending is non-blocking -it returns in ~100ns.
 //!   - Receiving blocks only the background task, never the caller.
 //!
 //!   Timeline:
@@ -28,7 +28,7 @@
 //! ## Channel capacity
 //!
 //! We use a bounded channel with capacity 1000. If the background task
-//! falls behind by > 1000 actions, `send()` will block — this provides
+//! falls behind by > 1000 actions, `send()` will block -this provides
 //! backpressure and prevents unbounded memory growth. At 10 agent
 //! actions/second, the buffer lasts 100 seconds before backpressure kicks in.
 //!
@@ -36,7 +36,7 @@
 //!
 //! When the last `ActionLogger` clone is dropped, `tx` is dropped, which
 //! closes the channel. The background task's `rx.recv()` returns `None` and
-//! it exits cleanly — no explicit shutdown signal needed.
+//! it exits cleanly -no explicit shutdown signal needed.
 
 use crate::error::Result;
 use crate::storage::kv_backend::KvBackend;
@@ -52,13 +52,13 @@ const CHANNEL_CAPACITY: usize = 1000;
 
 /// Async non-blocking action logger.
 ///
-/// Cheap to clone — each clone holds only an `mpsc::Sender`, which is
+/// Cheap to clone -each clone holds only an `mpsc::Sender`, which is
 /// internally reference-counted. All clones share the same background task
 /// and the same KV database.
 #[derive(Clone)]
 pub struct ActionLogger {
     /// Sender half of the bounded Tokio channel.
-    /// Cloning the sender is O(1) — it just increments an Arc counter.
+    /// Cloning the sender is O(1) -it just increments an Arc counter.
     tx: mpsc::Sender<AgentAction>,
 }
 
@@ -75,7 +75,7 @@ impl ActionLogger {
         // The sender (tx) lives in ActionLogger; the receiver (rx) goes to the task.
         let (tx, rx) = mpsc::channel::<AgentAction>(CHANNEL_CAPACITY);
 
-        // tokio::spawn creates a concurrent task — like a lightweight green thread.
+        // tokio::spawn creates a concurrent task -like a lightweight green thread.
         // It takes ownership of rx and kv. The future returned by background_writer
         // is polled by the Tokio runtime without blocking the calling thread.
         tokio::spawn(background_writer(rx, kv));
@@ -90,7 +90,7 @@ impl ActionLogger {
     ///
     /// # Errors
     /// Returns `Err` only if the background task has crashed and the
-    /// channel is closed — an extremely rare condition.
+    /// channel is closed -an extremely rare condition.
     pub async fn log(&self, action: AgentAction) -> Result<()> {
         // send() is async because a bounded channel blocks when full.
         // With capacity=1000 and typical agent speed (~10 actions/s),
@@ -127,16 +127,16 @@ impl ActionLogger {
 ///
 /// Each action produces up to 4 KV writes (same "pre-compute at write time"
 /// pattern as the graph storage layer):
-///   1. `action:{uuid}`                     — full record for `get_action()`
-///   2. `history:recent:{ts}:{uuid}`        — file path for `recent_files()`
-///   3. `history:count:{file_path}`         — frequency counter for `frequent_files()`
-///   4. `history:error:{ts}:{uuid}`         — only if `action.is_error()`
+///   1. `action:{uuid}`                     -full record for `get_action()`
+///   2. `history:recent:{ts}:{uuid}`        -file path for `recent_files()`
+///   3. `history:count:{file_path}`         -frequency counter for `frequent_files()`
+///   4. `history:error:{ts}:{uuid}`         -only if `action.is_error()`
 ///
-/// Errors are printed to stderr but do NOT stop the task — a transient
+/// Errors are printed to stderr but do NOT stop the task -a transient
 /// disk error on one action must not kill logging for all future actions.
 async fn background_writer(mut rx: mpsc::Receiver<AgentAction>, kv: KvBackend) {
     // `rx.recv()` returns None when every sender (tx) has been dropped.
-    // The while-let loop exits cleanly at that point — no explicit shutdown needed.
+    // The while-let loop exits cleanly at that point -no explicit shutdown needed.
     while let Some(action) = rx.recv().await {
         // ── Write 1: full action record ──────────────────────────────────────
         if let Err(e) = kv.set(&action_key(&action.id.to_string()), &action) {
@@ -174,7 +174,7 @@ async fn background_writer(mut rx: mpsc::Receiver<AgentAction>, kv: KvBackend) {
 /// Atomically-ish increments the per-file access counter in KV.
 ///
 /// This is a non-atomic read-modify-write. If two background tasks updated
-/// the same file concurrently (impossible here — we have one background task),
+/// the same file concurrently (impossible here -we have one background task),
 /// the last writer would win. For a relevance *hint*, last-write-wins is fine.
 ///
 /// `kv.get` returns `None` on first access → we start the counter at 0.
@@ -209,7 +209,7 @@ mod tests {
 
     /// Returns (ActionLogger, History, TempDir) all pointing at the same sled DB.
     ///
-    /// `KvBackend` is Arc-backed — cloning gives a second handle to the same db.
+    /// `KvBackend` is Arc-backed -cloning gives a second handle to the same db.
     fn open_logger_and_history() -> (ActionLogger, History, TempDir) {
         let dir = TempDir::new().unwrap();
         let kv = KvBackend::open(dir.path()).unwrap();

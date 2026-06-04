@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod export_cmd;
 pub mod index_cmd;
 pub mod install_cmd;

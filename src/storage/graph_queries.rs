@@ -4,14 +4,14 @@
 //!
 //!   sled (disk)
 //!     ↑  bytes
-//!   KvBackend   — knows about bytes, not domain types
+//!   KvBackend   -knows about bytes, not domain types
 //!     ↑  keys / JSON
-//!   GraphStore  — you are here. Knows about CodeEntity, CallGraph.
+//!   GraphStore  -you are here. Knows about CodeEntity, CallGraph.
 //!     ↑
 //!   CLI / Query Engine
 //!
 //! Core insight: we pre-compute all indexes at WRITE time so every
-//! read is a single KV lookup — O(1). Writing is O(V + E); reading is O(1).
+//! read is a single KV lookup -O(1). Writing is O(V + E); reading is O(1).
 //!
 //! For graph traversal (BFS) we fan out one KV read per node visited,
 //! which is O(nodes_visited) reads. Still fast because sled reads are
@@ -34,6 +34,9 @@ use super::{
 /// Graph-aware storage layer built on KvBackend.
 ///
 /// All reads are O(1) because indexes are pre-computed at write time.
+///
+/// `Clone` is a shallow Arc increment -all clones share the same sled::Db.
+#[derive(Clone)]
 pub struct GraphStore {
     kv: KvBackend,
 }
@@ -53,7 +56,7 @@ impl GraphStore {
     /// Flushes to disk after all writes to guarantee durability.
     pub fn store_graph(&self, graph: &CallGraph) -> Result<()> {
         // Clear stale data from previous indexing runs so load_graph always
-        // reflects exactly the graph we are about to write — no ghost entities.
+        // reflects exactly the graph we are about to write -no ghost entities.
         self.clear_graph_keys()?;
 
         // ── Phase 1: entities, file index, language index ─────────────────────
@@ -71,7 +74,7 @@ impl GraphStore {
                 .or_default()
                 .push(id.clone());
 
-            // Language::Display gives "rust", "python", etc. — lowercase already.
+            // Language::Display gives "rust", "python", etc. -lowercase already.
             lang_index
                 .entry(entity.language.to_string())
                 .or_default()
@@ -94,7 +97,7 @@ impl GraphStore {
         //   callers:{callee}         = [caller_ids]  reverse adjacency (pre-computed!)
         //
         // The reverse adjacency (callers) is the key design: because we compute
-        // it here at write time, find_callers() is a single read — not a scan.
+        // it here at write time, find_callers() is a single read -not a scan.
 
         let mut callees_map: HashMap<String, Vec<String>> = HashMap::new();
         let mut callers_map: HashMap<String, Vec<String>> = HashMap::new();
@@ -124,14 +127,14 @@ impl GraphStore {
         // ── Phase 3: metadata ─────────────────────────────────────────────────
         self.kv.set(meta_graph_key(), &graph.metadata)?;
 
-        // Flush once at the end — sled batches this efficiently.
+        // Flush once at the end -sled batches this efficiently.
         self.kv.flush()
     }
 
     /// Reconstructs a full CallGraph from the KV store.
     ///
     /// This is the inverse of store_graph().
-    /// Time: O(V + E) reads — one per entity, one callee-list per entity.
+    /// Time: O(V + E) reads -one per entity, one callee-list per entity.
     pub fn load_graph(&self) -> Result<CallGraph> {
         let entity_keys = self.kv.list_prefix("entity:")?;
 
@@ -151,7 +154,7 @@ impl GraphStore {
         }
 
         // Reconstruct edges from the callees adjacency lists.
-        // We only iterate entity IDs we already loaded — avoids scanning edge: keys.
+        // We only iterate entity IDs we already loaded -avoids scanning edge: keys.
         let ids: Vec<String> = graph.entities.keys().cloned().collect();
         for id in ids {
             let callees: Vec<String> = self.kv
@@ -163,7 +166,7 @@ impl GraphStore {
         }
 
         // add_entity refreshes total_files/total_entities/languages but not
-        // repo_path or indexed_at — those come from the stored metadata.
+        // repo_path or indexed_at -those come from the stored metadata.
         if let Some(meta) = self.kv.get::<GraphMetadata>(meta_graph_key())? {
             graph.set_repo_path(meta.repo_path);
             graph.metadata.indexed_at = meta.indexed_at;
@@ -207,7 +210,7 @@ impl GraphStore {
 
     /// Returns all entity ids whose name field matches `name`.
     ///
-    /// This is a linear scan over all entity: keys — O(V).
+    /// This is a linear scan over all entity: keys -O(V).
     /// Acceptable because name searches are rare and V < 500k in practice.
     pub fn find_entity_by_name(&self, name: &str) -> Result<Vec<String>> {
         let all_keys = self.kv.list_prefix("entity:")?;
@@ -332,7 +335,7 @@ impl GraphStore {
 
     /// Returns all entity keys in the store (for QueryEngine full scan).
     ///
-    /// Keys are returned with the `"entity:"` prefix — strip it before
+    /// Keys are returned with the `"entity:"` prefix -strip it before
     /// passing to `entity_by_id`, which re-applies the prefix internally.
     pub fn entity_keys(&self) -> Result<Vec<String>> {
         self.kv.list_prefix("entity:")
@@ -416,7 +419,7 @@ mod tests {
 
         let mut graph = CallGraph::new();
         graph.set_repo_path("./test_repo".into());
-        // indexed_at is set by CallGraph::new() — leave as-is for tests.
+        // indexed_at is set by CallGraph::new() -leave as-is for tests.
 
         graph.add_entity(main_e);
         graph.add_entity(auth_e);
@@ -637,6 +640,18 @@ mod tests {
     }
 
     #[test]
+    fn graph_store_clone_shares_underlying_db() {
+        // Clone before storing -both should see the write afterward.
+        let dir = TempDir::new().unwrap();
+        let kv = KvBackend::open(dir.path()).unwrap();
+        let store1 = GraphStore::new(kv);
+        let store2 = store1.clone();
+        store1.store_graph(&make_test_graph()).unwrap();
+        // store2 is an Arc clone of the same sled::Db -must see 3 entities
+        assert_eq!(store2.entity_count().unwrap(), 3);
+    }
+
+    #[test]
     fn entity_keys_returns_all_entity_keys() {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
@@ -665,7 +680,7 @@ mod tests {
         small.edges.retain(|(_, callee)| callee != "src/auth.rs::verify_token");
         store.store_graph(&small).unwrap();
 
-        // load_graph should reflect the new index exactly — no ghost entities
+        // load_graph should reflect the new index exactly -no ghost entities
         let loaded = store.load_graph().unwrap();
         assert_eq!(loaded.entities.len(), 2);
     }

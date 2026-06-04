@@ -27,7 +27,7 @@ impl QueryCommand {
     pub async fn execute(&self) -> Result<()> {
         let repo_root = Self::resolve_repo_root(&self.index)?;
 
-        // Open the existing KV store — no re-indexing.
+        // Open the existing KV store -no re-indexing.
         // Run `graphswarm index <path>` first to populate the store.
         let db_path = repo_root.join(".graphswarm_db");
         let kv    = KvBackend::open(&db_path)?;
@@ -73,7 +73,7 @@ impl QueryCommand {
 
                 for result in &results {
                     println!(
-                        "{:.3}  {}  — {}",
+                        "{:.3}  {}  -{}",
                         result.relevance_score, result.file_path, result.reason
                     );
                     for entity in &result.entities {

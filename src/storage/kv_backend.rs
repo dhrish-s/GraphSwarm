@@ -9,7 +9,7 @@
 //! 2. All operations return Result<T>. "Key not found" is Ok(None), not Err.
 //!    Only storage failures (disk full, corruption) return Err.
 //!
-//! 3. KvBackend is Clone because sled::Db is Arc-backed internally — cloning
+//! 3. KvBackend is Clone because sled::Db is Arc-backed internally -cloning
 //!    just increments a reference count. Safe to share across threads.
 //!
 //! 4. Writes are flushed asynchronously by sled. Call flush() after bulk
@@ -21,7 +21,7 @@ use std::path::Path;
 
 /// Embedded key-value store backed by sled.
 ///
-/// Cheap to clone — the underlying sled::Db uses Arc internally.
+/// Cheap to clone -the underlying sled::Db uses Arc internally.
 #[derive(Clone)]
 pub struct KvBackend {
     db: sled::Db,
@@ -41,7 +41,7 @@ impl KvBackend {
 
     /// Serializes `value` as JSON and stores it under `key`.
     pub fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
-        // serde_json::to_vec writes bytes directly — slightly faster than
+        // serde_json::to_vec writes bytes directly -slightly faster than
         // to_string because it avoids allocating an intermediate String.
         let bytes = serde_json::to_vec(value).map_err(|e| {
             Error::serialization(format!("Failed to serialize value for key '{}': {}", key, e))
@@ -56,7 +56,7 @@ impl KvBackend {
 
     /// Retrieves and deserializes a value by key.
     ///
-    /// Returns Ok(None) if the key doesn't exist — this is NOT an error.
+    /// Returns Ok(None) if the key doesn't exist -this is NOT an error.
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         let maybe_bytes = self.db.get(key.as_bytes()).map_err(|e| {
             Error::storage(format!("Failed to read key '{}': {}", key, e))
@@ -88,7 +88,7 @@ impl KvBackend {
     /// Returns all keys that start with `prefix`, sorted lexicographically.
     ///
     /// sled stores keys in sorted byte order (B-tree), so prefix scans are
-    /// efficient — O(log n + k) where k is the number of matching keys.
+    /// efficient -O(log n + k) where k is the number of matching keys.
     pub fn list_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let mut keys = Vec::new();
 
@@ -97,7 +97,7 @@ impl KvBackend {
                 Error::storage(format!("Failed to scan prefix '{}': {}", prefix, e))
             })?;
 
-            // Our keys are always valid UTF-8 — we construct them ourselves.
+            // Our keys are always valid UTF-8 -we construct them ourselves.
             let key = String::from_utf8(key_bytes.to_vec()).map_err(|e| {
                 Error::storage(format!("Key is not valid UTF-8: {}", e))
             })?;
@@ -123,7 +123,7 @@ impl KvBackend {
     /// sled normally flushes in the background. Call this after a bulk write
     /// to guarantee the data is durable before returning to the caller.
     pub fn flush(&self) -> Result<()> {
-        // flush() returns the number of bytes flushed — we discard it.
+        // flush() returns the number of bytes flushed -we discard it.
         self.db.flush().map_err(|e| {
             Error::storage(format!("Failed to flush KV store: {}", e))
         })?;

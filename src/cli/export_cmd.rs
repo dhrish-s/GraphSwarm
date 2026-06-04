@@ -3,9 +3,9 @@
 //! These three outputs are the human-facing face of GraphSwarm.
 //! Commit them to git so the whole team benefits without re-indexing.
 //!
-//!   graph.json       — full serialized CallGraph (machine-readable)
-//!   graph.html       — interactive browser visualization (human-readable)
-//!   GRAPH_REPORT.md  — key concepts, god nodes, surprising connections
+//!   graph.json       -full serialized CallGraph (machine-readable)
+//!   graph.html       -interactive browser visualization (human-readable)
+//!   GRAPH_REPORT.md  -key concepts, god nodes, surprising connections
 
 use crate::error::Result;
 use crate::indexer::call_graph::{CallGraph, GraphMetadata};
@@ -59,7 +59,7 @@ impl ExportCommand {
         Ok(())
     }
 
-    /// Writes `graph.json` — full serialized CallGraph.
+    /// Writes `graph.json` -full serialized CallGraph.
     fn export_json(&self, graph: &CallGraph, out_dir: &Path) -> Result<()> {
         let path = out_dir.join("graph.json");
         let json = serde_json::to_string_pretty(graph).map_err(|e| {
@@ -72,10 +72,15 @@ impl ExportCommand {
         Ok(())
     }
 
-    /// Writes `graph.html` — interactive D3.js force-directed visualization.
+    /// Writes `graph.html` -interactive D3.js force-directed visualization.
     ///
-    /// Opens in any browser. Click a node to highlight its connections.
-    /// Search box filters nodes by name. Drag nodes to rearrange.
+    /// D3.js v7.9.0 is bundled inline (src/cli/assets/d3.min.js) so the
+    /// visualization works with no internet connection.
+    ///
+    /// Why four-part concatenation instead of one big format!() string?
+    /// D3.js itself contains many `{` and `}` characters, which would need
+    /// escaping as `{{`/`}}` inside format!(). Concatenating it as a plain
+    /// &str avoids that entirely.
     fn export_html(&self, graph: &CallGraph, out_dir: &Path) -> Result<()> {
         let path = out_dir.join("graph.html");
 
@@ -100,11 +105,9 @@ impl ExportCommand {
         let n_entities = graph.entities.len();
         let n_edges    = graph.edges.len();
 
-        // Build HTML in two parts to avoid the raw-string early-termination issue.
-        // CSS/JS hex color literals like "#d2a8ff" contain `"#` which would
-        // terminate an r#"..."# raw string. Using r##"..."## (terminates at "##)
-        // is safe because no CSS hex code contains `"##`.
-        let header = format!(
+        // ── Part 1: static HTML structure (uses repo metadata format args) ────
+        // r##"..."## avoids early termination from CSS hex colors like "#d2a8ff".
+        let part1 = format!(
             r##"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -143,15 +146,25 @@ impl ExportCommand {
 <input id="search" placeholder="Search entities..." />
 <div class="tooltip" id="tooltip"></div>
 <svg id="canvas"></svg>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-<script>
+"##
+        );
+
+        // ── Part 2: D3.js v7.9.0 inline (no format! -D3 contains { and }) ───
+        // Concatenated as plain string; no macro processing touches D3 source.
+        let part2 = String::from("<script>\n/* D3.js v7.9.0 -bundled for offline use */\n")
+            + super::assets::D3_MIN_JS
+            + "\n</script>\n";
+
+        // ── Part 3: dynamic data (uses {nodes_json}, {links_json}) ────────────
+        let part3 = format!(
+            r##"<script>
 const NODES = {nodes_json};
 const LINKS = {links_json};
 "##
         );
 
-        // JavaScript section is a static string — no format args, no "# risk.
-        let script = r##"const COLOR = {
+        // ── Part 4: static app logic (no format args) ─────────────────────────
+        let part4 = r##"const COLOR = {
   "function": "#58a6ff", "method": "#3fb950", "class": "#d2a8ff",
   "import":   "#ffa657", "module":  "#ff7b72"
 };
@@ -204,16 +217,16 @@ sim.on("tick", () => {
 </body>
 </html>"##;
 
-        let html = header + script;
+        let html = part1 + &part2 + &part3 + part4;
 
         std::fs::write(&path, html).map_err(|e| {
             crate::error::Error::storage(format!("Cannot write graph.html: {e}"))
         })?;
-        println!("  graph.html (interactive browser visualization)");
+        println!("  graph.html (interactive, D3.js bundled -works offline)");
         Ok(())
     }
 
-    /// Writes `GRAPH_REPORT.md` — human-readable analysis of the call graph.
+    /// Writes `GRAPH_REPORT.md` -human-readable analysis of the call graph.
     ///
     /// Includes god nodes, largest files, cross-module edges, and suggested questions.
     fn export_markdown(&self, graph: &CallGraph, meta: &GraphMetadata, out_dir: &Path) -> Result<()> {
@@ -231,9 +244,9 @@ sim.on("tick", () => {
         sorted.sort_by(|a, b| b.1.cmp(a.1));
         let god_nodes: Vec<String> = sorted.iter().take(5).map(|(id, deg)| {
             if let Some(e) = graph.entities.get(**id) {
-                format!("- **{}** (`{}`) — {} connections", e.name, e.file_path, deg)
+                format!("- **{}** (`{}`) -{} connections", e.name, e.file_path, deg)
             } else {
-                format!("- `{}` — {} connections", id, deg)
+                format!("- `{}` -{} connections", id, deg)
             }
         }).collect();
 
@@ -258,7 +271,7 @@ sim.on("tick", () => {
         let mut by_file: Vec<_> = file_counts.into_iter().collect();
         by_file.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
         let largest: Vec<String> = by_file.iter().take(5)
-            .map(|(f, n)| format!("- `{f}` — {n} entities"))
+            .map(|(f, n)| format!("- `{f}` -{n} entities"))
             .collect();
 
         let report = format!(
@@ -273,7 +286,7 @@ r#"# GraphSwarm Report
 
 ## God Nodes
 
-The most connected entities — everything flows through these.
+The most connected entities -everything flows through these.
 
 {god}
 
@@ -281,7 +294,7 @@ The most connected entities — everything flows through these.
 
 ## Largest Files
 
-Files with the most entities — high complexity areas.
+Files with the most entities -high complexity areas.
 
 {largest}
 
@@ -289,7 +302,7 @@ Files with the most entities — high complexity areas.
 
 ## Surprising Connections
 
-Cross-module call edges — unexpected dependencies between directories.
+Cross-module call edges -unexpected dependencies between directories.
 
 {cross}
 
@@ -313,7 +326,7 @@ graphswarm server   # start MCP server for Claude Code
             edges    = graph.edges.len(),
             god      = if god_nodes.is_empty()  { "_(none found)_".into() } else { god_nodes.join("\n")  },
             largest  = if largest.is_empty()     { "_(none found)_".into() } else { largest.join("\n")     },
-            cross    = if cross_edges.is_empty() { "_(none — clean module boundaries!)_".into() }
+            cross    = if cross_edges.is_empty() { "_(none -clean module boundaries!)_".into() }
                        else { cross_edges.join("\n") },
             ver      = env!("CARGO_PKG_VERSION"),
         );

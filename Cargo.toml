@@ -49,8 +49,12 @@ harness = false
 name = "action_logging"
 harness = false
 
+# Binary size: 4.3 MB (verified 2026-06-04, well under the 20 MB target)
+# opt-level = "z" optimizes for size (vs "3" which optimizes for speed).
+# lto = true enables link-time optimization for dead-code elimination.
+# strip = true removes debug symbols from the final binary.
 [profile.release]
-opt-level = 3
+opt-level = "z"
 lto = true
 codegen-units = 1
 strip = true

@@ -1,6 +1,6 @@
 //! Key-value schema for GraphSwarm's persistent storage layer.
 //!
-//! ALL keys in the system are constructed here — never as raw string literals
+//! ALL keys in the system are constructed here -never as raw string literals
 //! elsewhere. This makes the key space a single source of truth: if a key
 //! format changes, you change it here and nowhere else.
 //!
@@ -71,7 +71,7 @@ pub fn lang_index_key(language: &str) -> String {
 //   sled stores keys in sorted lexicographic byte order.
 //   RFC3339 timestamps ("2025-06-01T12:34:56Z") sort lexicographically
 //   in chronological order, so prefixing a key with a timestamp lets us
-//   retrieve records in time order from a single prefix scan — no sort step.
+//   retrieve records in time order from a single prefix scan -no sort step.
 //
 //   Key format:  "history:recent:{rfc3339}:{uuid}"
 //   Example:
@@ -79,7 +79,7 @@ pub fn lang_index_key(language: &str) -> String {
 //     "history:recent:2025-06-01T11:00:00Z:uuid-b"  ← later   (larger key)
 //
 //   list_prefix("history:recent:") returns keys ascending (oldest first).
-//   Reversing the result gives newest-first — the natural read order for
+//   Reversing the result gives newest-first -the natural read order for
 //   "what did the agent touch most recently?"
 //
 //   The UUID suffix guarantees uniqueness even if two actions share the
@@ -113,7 +113,7 @@ pub fn history_count_key(file_path: &str) -> String {
 /// Time-ordered key for error actions only.
 ///
 /// Mirrors history_recent_key but scoped to errors so recent_errors()
-/// can scan only error records — no filtering needed on the read path.
+/// can scan only error records -no filtering needed on the read path.
 pub fn history_error_key(timestamp: &str, action_id: &str) -> String {
     format!("history:error:{}:{}", timestamp, action_id)
 }

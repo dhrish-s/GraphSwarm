@@ -29,7 +29,7 @@ pub struct ScoredEntity {
 ///
 /// Why max instead of average?
 /// If a file has one highly relevant function (0.9) and nine irrelevant
-/// ones (0.0), the file IS relevant — the one function is what matters.
+/// ones (0.0), the file IS relevant -the one function is what matters.
 /// Averaging would bury it at 0.09. Max correctly surfaces it.
 pub fn rank_files(scored_entities: Vec<ScoredEntity>, top_k: usize) -> Vec<RelevantFile> {
     if scored_entities.is_empty() || top_k == 0 {
@@ -84,7 +84,7 @@ pub fn build_reason(entity: &CodeEntity, query: &str, distance: Option<usize>, s
         return format!("name match: {}", entity.name);
     }
 
-    // Also check file path — e.g. query "src" matching "src/auth.rs"
+    // Also check file path -e.g. query "src" matching "src/auth.rs"
     let path_lower = entity.file_path.to_lowercase();
     if path_lower.contains(&query_lower)
         || query_lower.split_whitespace().any(|t| t.len() >= 2 && path_lower.contains(t))
@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn build_reason_recency_minutes() {
         let e = make_entity("src/other.rs", "unrelated_fn");
-        // 30 minutes = 1800s — below the 3600s threshold, so "minutes ago" branch
+        // 30 minutes = 1800s -below the 3600s threshold, so "minutes ago" branch
         let r = build_reason(&e, "authenticate", None, Some(30.0 * 60.0));
         assert!(r.contains("minutes ago"), "got: {r}");
     }
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn build_reason_docstring_match() {
         let mut e = make_entity("src/other.rs", "unrelated");
-        // Docstring contains the query word exactly — not "authentication" (different word)
+        // Docstring contains the query word exactly -not "authentication" (different word)
         e.docstring = Some("Handles authenticate calls".into());
         let r = build_reason(&e, "authenticate", None, None);
         assert!(r.contains("authenticate") || r.contains("docstring"), "got: {r}");

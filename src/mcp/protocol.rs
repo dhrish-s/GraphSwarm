@@ -12,7 +12,7 @@
 //!   - No port conflicts, no firewall issues
 //!   - Claude Code spawns the MCP server as a subprocess
 //!   - When Claude Code exits, the server exits automatically
-//!   - Zero configuration — no IP, no port, no auth
+//!   - Zero configuration -no IP, no port, no auth
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -65,7 +65,7 @@ pub mod error_codes {
 
 /// A single content block in a tool result.
 /// MCP tools return an array of content blocks.
-/// We only use "text" — GraphSwarm doesn't produce images or other media.
+/// We only use "text" -GraphSwarm doesn't produce images or other media.
 #[derive(Debug, Serialize)]
 pub struct ContentBlock {
     #[serde(rename = "type")]

@@ -14,6 +14,8 @@
 
 use std::collections::HashSet;
 
+use chrono::{DateTime, Utc};
+
 use crate::error::Result;
 use crate::storage::kv_backend::KvBackend;
 use crate::storage::schema::{action_key, history_count_key};
@@ -32,7 +34,7 @@ impl History {
     /// Returns the `n` most recently accessed **unique** file paths, newest first.
     ///
     /// Algorithm:
-    /// 1. Prefix-scan `"history:recent:"` — sled returns keys in ascending
+    /// 1. Prefix-scan `"history:recent:"` -sled returns keys in ascending
     ///    byte order, which equals ascending chronological order for RFC3339 keys.
     /// 2. Reverse the key list so we iterate newest-first.
     /// 3. Collect distinct file paths until we have `n`.
@@ -66,7 +68,7 @@ impl History {
     /// Returns the `n` most frequently accessed files, sorted by count descending.
     ///
     /// Algorithm:
-    /// 1. Prefix-scan `"history:count:"` — one `FileAccessCount` per unique file.
+    /// 1. Prefix-scan `"history:count:"` -one `FileAccessCount` per unique file.
     /// 2. Sort by count descending; use `last_accessed` as a tiebreaker.
     /// 3. Truncate to `n`.
     ///
@@ -100,7 +102,7 @@ impl History {
     /// Returns the `n` most recent **error** actions, newest first.
     ///
     /// Error actions are indexed separately under `"history:error:"` so this
-    /// query scans only errors — no filtering over the full history needed.
+    /// query scans only errors -no filtering over the full history needed.
     pub fn recent_errors(&self, n: usize) -> Result<Vec<AgentAction>> {
         if n == 0 {
             return Ok(Vec::new());
@@ -130,6 +132,46 @@ impl History {
     /// Returns a single action by its UUID string, or `None` if not found.
     pub fn get_action(&self, action_id: &str) -> Result<Option<AgentAction>> {
         self.kv.get(&action_key(action_id))
+    }
+
+    /// Returns the most recent UTC timestamp at which the agent accessed `file_path`,
+    /// or `None` if the file has never been logged.
+    ///
+    /// Algorithm: scan all `history:recent:` keys (time-ordered by prefix), load
+    /// only entries whose value matches `file_path`, extract the RFC3339 timestamp
+    /// embedded in the key, and return the maximum.
+    ///
+    /// Key format: `history:recent:{rfc3339}:{uuid}`
+    /// UUID contains only hyphens -no colons -so `rfind(':')` reliably splits
+    /// the timestamp from the UUID suffix.
+    ///
+    /// Complexity: O(k) where k = total history records.
+    pub fn file_last_accessed(&self, file_path: &str) -> Result<Option<DateTime<Utc>>> {
+        let keys = self.kv.list_prefix("history:recent:")?;
+        let mut latest: Option<DateTime<Utc>> = None;
+
+        for key in &keys {
+            if let Some(path) = self.kv.get::<String>(key)? {
+                if path == file_path {
+                    // Strip prefix, then split at the rightmost ':' to isolate the
+                    // timestamp. UUID is always 36 chars and contains no colons,
+                    // so rfind(':') finds the separator between timestamp and UUID.
+                    if let Some(after) = key.strip_prefix("history:recent:") {
+                        if let Some(colon_idx) = after.rfind(':') {
+                            let ts_str = &after[..colon_idx];
+                            if let Ok(dt) = DateTime::parse_from_rfc3339(ts_str) {
+                                let dt_utc = dt.with_timezone(&Utc);
+                                if latest.is_none() || dt_utc > *latest.as_ref().unwrap() {
+                                    latest = Some(dt_utc);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(latest)
     }
 
     /// Returns the recorded access count for `file_path`, or `0` if the file
@@ -174,9 +216,9 @@ mod tests {
     /// Creates a KvBackend seeded with 5 known actions across 3 files.
     ///
     /// Access summary (chronological order t1 < t2 < t3 < t4 < t5):
-    ///   file_a.rs — 3 accesses (t1, t3, t5)  — most frequent, most recent
-    ///   file_b.rs — 1 access  (t2)
-    ///   file_c.rs — 1 access  (t4)            — only error action
+    ///   file_a.rs -3 accesses (t1, t3, t5)  -most frequent, most recent
+    ///   file_b.rs -1 access  (t2)
+    ///   file_c.rs -1 access  (t4)            -only error action
     fn seeded_history() -> (History, TempDir) {
         let dir = TempDir::new().unwrap();
         let kv = KvBackend::open(dir.path()).unwrap();
@@ -274,7 +316,7 @@ mod tests {
 
     #[test]
     fn recent_files_newest_first() {
-        // t5 (most recent) touches file_a.rs — it must be element [0]
+        // t5 (most recent) touches file_a.rs -it must be element [0]
         let (history, _dir) = seeded_history();
         let files = history.recent_files(2).unwrap();
         assert_eq!(files[0], "file_a.rs");
@@ -368,7 +410,7 @@ mod tests {
     fn recent_errors_empty_when_no_errors() {
         let dir = TempDir::new().unwrap();
         let kv = KvBackend::open(dir.path()).unwrap();
-        // Write only a non-error action — no history:error: keys written
+        // Write only a non-error action -no history:error: keys written
         let action = AgentAction {
             id:          Uuid::new_v4(),
             action_type: ActionType::FileRead,
@@ -434,6 +476,36 @@ mod tests {
             .get_action("00000000-0000-0000-0000-000000000000")
             .unwrap()
             .is_none());
+    }
+
+    // ── file_last_accessed ────────────────────────────────────────────────────
+
+    #[test]
+    fn file_last_accessed_returns_none_for_unaccessed_file() {
+        let (history, _dir) = seeded_history();
+        assert!(history.file_last_accessed("never_touched.rs").unwrap().is_none());
+    }
+
+    #[test]
+    fn file_last_accessed_returns_some_for_accessed_file() {
+        let (history, _dir) = seeded_history();
+        // file_a.rs was accessed at t1, t3, t5 -must find a timestamp
+        assert!(history.file_last_accessed("file_a.rs").unwrap().is_some());
+    }
+
+    #[test]
+    fn file_last_accessed_returns_most_recent_of_multiple_accesses() {
+        let (history, _dir) = seeded_history();
+        // file_a.rs accesses: t1 (-500s), t3 (-300s), t5 (-100s)
+        // Must return the timestamp closest to now (≈ t5)
+        let now = Utc::now();
+        let ts = history.file_last_accessed("file_a.rs").unwrap().unwrap();
+        let elapsed = (now - ts).num_seconds();
+        // t5 was now - 100s; allow ±30s for test timing jitter
+        assert!(
+            elapsed >= 70 && elapsed <= 130,
+            "expected ~100s elapsed for file_a.rs, got {elapsed}s"
+        );
     }
 
     // ── file_access_count ─────────────────────────────────────────────────────
