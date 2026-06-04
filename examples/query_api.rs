@@ -1,24 +1,27 @@
 //! Example: query the index for relevant files.
 //!
-//! Usage: cargo run --example query_api
+//! Run `graphswarm index .` first, then:
+//!   cargo run --example query_api
 
 use graphswarm::prelude::*;
+use graphswarm::storage::{GraphStore, KvBackend};
+use graphswarm::tracker::History;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let indexer = CodeIndexer::new("python")?;
-    let graph = indexer.index_directory(".")?;
-    let engine = QueryEngine::new(graph)?;
+    let db_path = std::path::Path::new(".graphswarm_db");
+    let kv      = KvBackend::open(db_path)?;
+    let store   = GraphStore::new(kv.clone());
+    let history = History::new(kv);
 
-    let results = engine.query_relevant_files(
-        "Fix payment timeout bug", None, 5,
-    ).await?;
+    let engine  = QueryEngine::new(store, history);
+    let results = engine.query("Fix payment timeout bug", 5)?;
 
     if results.is_empty() {
-        println!("No results (query engine not yet implemented)");
+        println!("No results — run `graphswarm index .` first.");
     }
     for r in results {
-        println!("{}: {:.2} - {}", r.file_path, r.relevance_score, r.reason);
+        println!("{}: {:.3}  — {}", r.file_path, r.relevance_score, r.reason);
     }
     Ok(())
 }

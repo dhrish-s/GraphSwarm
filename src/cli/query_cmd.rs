@@ -1,12 +1,13 @@
 use clap::Args;
 use std::path::PathBuf;
 use crate::error::{Error, Result};
-use crate::indexer::CodeIndexer;
+use crate::query::QueryEngine;
 use crate::storage::{GraphStore, KvBackend};
+use crate::tracker::History;
 
 #[derive(Args)]
 pub struct QueryCommand {
-    /// Query expression, e.g. callers payment.py::process_payment
+    /// Query expression, e.g. "authenticate" or "callers src/auth.rs::verify_token"
     pub query: Vec<String>,
 
     /// Path to index file or repository root
@@ -26,35 +27,61 @@ impl QueryCommand {
     pub async fn execute(&self) -> Result<()> {
         let repo_root = Self::resolve_repo_root(&self.index)?;
 
-        // Index the directory and persist to the KV store.
-        // The store lives at <repo_root>/.graphswarm_db/ — a sled directory.
-        let indexer = CodeIndexer::new("auto")?;
-        let graph = indexer.index_directory(&repo_root)?;
-
+        // Open the existing KV store — no re-indexing.
+        // Run `graphswarm index <path>` first to populate the store.
         let db_path = repo_root.join(".graphswarm_db");
-        let kv = KvBackend::open(&db_path)?;
-        let store = GraphStore::new(kv);
-        store.store_graph(&graph)?;
+        let kv    = KvBackend::open(&db_path)?;
+        let store = GraphStore::new(kv.clone());
+        let history = History::new(kv);
 
         let tokens: Vec<&str> = self.query.iter().map(String::as_str).collect();
         if tokens.is_empty() {
             return Err(Error::query(
-                "Missing query. Use callers, callees, file, entity, bfs, reverse_bfs, or dependency_chain."
+                "Missing query. Try: callers, callees, file, entity, bfs, or a natural-language phrase.",
             ));
         }
 
         match tokens.as_slice() {
-            ["callers", entity_id] => self.print_callers(entity_id, &store),
-            ["callees", entity_id] => self.print_callees(entity_id, &store),
-            ["file", file_path] => self.print_file_entities(file_path, &store),
-            ["entity", name] => self.print_entity_by_name(name, &store),
-            ["bfs", entity_id] => self.print_bfs(entity_id, 3, &store),
-            ["bfs", entity_id, depth] => self.print_bfs(entity_id, Self::parse_depth(depth)?, &store),
-            ["reverse_bfs", entity_id] => self.print_reverse_bfs(entity_id, 3, &store),
-            ["reverse_bfs", entity_id, depth] => self.print_reverse_bfs(entity_id, Self::parse_depth(depth)?, &store),
-            ["dependency_chain", entity_id] => self.print_dependency_chain(entity_id, 3, &store),
-            ["dependency_chain", entity_id, depth] => self.print_dependency_chain(entity_id, Self::parse_depth(depth)?, &store),
-            _ => Err(Error::query(format!("Unsupported query: '{}'", self.query.join(" ")))),
+            // ── Structured graph queries ──────────────────────────────────────
+            ["callers", entity_id]  => self.print_callers(entity_id, &store),
+            ["callees", entity_id]  => self.print_callees(entity_id, &store),
+            ["file", file_path]     => self.print_file_entities(file_path, &store),
+            ["entity", name]        => self.print_entity_by_name(name, &store),
+            ["bfs",  entity_id]     => self.print_bfs(entity_id, 3, &store),
+            ["bfs",  entity_id, depth]
+                => self.print_bfs(entity_id, Self::parse_depth(depth)?, &store),
+            ["reverse_bfs", entity_id]
+                => self.print_reverse_bfs(entity_id, 3, &store),
+            ["reverse_bfs", entity_id, depth]
+                => self.print_reverse_bfs(entity_id, Self::parse_depth(depth)?, &store),
+            ["dependency_chain", entity_id]
+                => self.print_dependency_chain(entity_id, 3, &store),
+            ["dependency_chain", entity_id, depth]
+                => self.print_dependency_chain(entity_id, Self::parse_depth(depth)?, &store),
+
+            // ── Natural language query via QueryEngine ────────────────────────
+            _ => {
+                let q = self.query.join(" ");
+                let engine = QueryEngine::new(store, history);
+                let results = engine.query(&q, self.top_k)?;
+
+                if results.is_empty() {
+                    println!("No results for: \"{}\"", q);
+                    println!("Tip: run `graphswarm index <path>` first to populate the graph.");
+                    return Ok(());
+                }
+
+                for result in &results {
+                    println!(
+                        "{:.3}  {}  — {}",
+                        result.relevance_score, result.file_path, result.reason
+                    );
+                    for entity in &result.entities {
+                        println!("       {}  ({})", entity.name, entity.entity_type);
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -65,12 +92,11 @@ impl QueryCommand {
         }
 
         if let Some(parent) = path.parent() {
-            if parent.file_name().and_then(|name| name.to_str()) == Some(".graphswarm") {
+            if parent.file_name().and_then(|n| n.to_str()) == Some(".graphswarm") {
                 if let Some(repo_root) = parent.parent() {
                     return Ok(repo_root.to_path_buf());
                 }
             }
-
             if parent.exists() {
                 return Ok(parent.to_path_buf());
             }

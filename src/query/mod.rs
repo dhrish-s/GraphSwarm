@@ -1,40 +1,58 @@
-pub mod relevance;
-pub mod ranker;
+//! Query engine for GraphSwarm.
+//!
+//! Answers the question: "Given a natural language query, which files are most relevant?"
+//!
+//! Four signals combined with fixed weights:
+//!   name match    (0.4) — does the entity name match the query tokens?
+//!   graph distance (0.3) — is this entity near a name-matching entity?
+//!   recency        (0.2) — did the agent touch this file recently?
+//!   docstring      (0.1) — does the documentation mention the query?
+//!
+//! Entry point: [`QueryEngine::query(q, top_k)`] → [`Vec<RelevantFile>`]
+
 pub mod api;
+pub mod ranker;
+pub mod relevance;
 
-use serde::{Deserialize, Serialize};
+/// Internal type module — `RelevantFile` is shared by both `api.rs` and
+/// `ranker.rs`. Defining it here as a sibling avoids any circular imports.
+pub(crate) mod mod_types {
+    use crate::indexer::extractor::CodeEntity;
+    use serde::{Deserialize, Serialize};
 
-pub use api::QueryEngine;
-pub use ranker::RankedResult;
-pub use relevance::RelevanceScorer;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RelevantFile {
-    pub file_path: String,
-    pub relevance_score: f64,
-    pub reason: String,
-    pub entities: Vec<String>,
-}
-
-impl RelevantFile {
-    pub fn new(file_path: String, score: f64, reason: String) -> Self {
-        Self {
-            file_path,
-            relevance_score: score,
-            reason,
-            entities: Vec::new(),
-        }
+    /// A file with its relevance score and the reason it was selected.
+    ///
+    /// This is the primary return type of `QueryEngine::query()`.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct RelevantFile {
+        /// File path relative to repo root (e.g. `"src/auth.rs"`)
+        pub file_path: String,
+        /// Overall relevance score: 0.0 (irrelevant) to 1.0 (perfect match)
+        pub relevance_score: f64,
+        /// Human-readable explanation: "name match: authenticate_user"
+        pub reason: String,
+        /// Specific entities in this file that matched the query.
+        pub entities: Vec<CodeEntity>,
     }
 }
+
+pub use api::QueryEngine;
+pub use mod_types::RelevantFile;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn relevant_file_creation() {
-        let r = RelevantFile::new("x.py".into(), 0.8, "match".into());
-        assert_eq!(r.relevance_score, 0.8);
-        assert_eq!(r.file_path, "x.py");
+    fn relevant_file_fields_accessible() {
+        let f = RelevantFile {
+            file_path:       "x.py".into(),
+            relevance_score: 0.8,
+            reason:          "name match: foo".into(),
+            entities:        Vec::new(),
+        };
+        assert_eq!(f.relevance_score, 0.8);
+        assert_eq!(f.file_path, "x.py");
+        assert!(f.entities.is_empty());
     }
 }

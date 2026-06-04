@@ -330,6 +330,14 @@ impl GraphStore {
         Ok(all)
     }
 
+    /// Returns all entity keys in the store (for QueryEngine full scan).
+    ///
+    /// Keys are returned with the `"entity:"` prefix — strip it before
+    /// passing to `entity_by_id`, which re-applies the prefix internally.
+    pub fn entity_keys(&self) -> Result<Vec<String>> {
+        self.kv.list_prefix("entity:")
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /// Deletes all graph-owned keys so re-indexing is always consistent.
@@ -626,6 +634,21 @@ mod tests {
             assert_eq!(loaded.entities.len(), 3);
             assert_eq!(loaded.edges.len(), 2);
         }
+    }
+
+    #[test]
+    fn entity_keys_returns_all_entity_keys() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph()).unwrap();
+        let keys = store.entity_keys().unwrap();
+        assert_eq!(keys.len(), 3);
+        assert!(keys.iter().all(|k| k.starts_with("entity:")));
+    }
+
+    #[test]
+    fn entity_keys_empty_store_returns_empty() {
+        let (store, _dir) = temp_store();
+        assert!(store.entity_keys().unwrap().is_empty());
     }
 
     #[test]
