@@ -336,7 +336,7 @@ impl GraphStore {
 
     /// Returns all entity keys in the store (for QueryEngine full scan).
     ///
-    /// Keys are returned with the `"entity:"` prefix — strip it before
+    /// Keys are returned with the `"entity:"` prefix -strip it before
     /// passing to `entity_by_id`, which re-applies the prefix internally.
     pub fn entity_keys(&self) -> Result<Vec<String>> {
         self.kv.list_prefix("entity:")
@@ -403,7 +403,7 @@ impl GraphStore {
             self.kv.delete(&entity_key(entity_id))?;
 
             // 4. Update language index (load entity first to know its language)
-            // Language index cleanup is best-effort — stale IDs are harmlessly ignored on read.
+            // Language index cleanup is best-effort -stale IDs are harmlessly ignored on read.
         }
 
         // Delete the file_entities index entry
@@ -472,7 +472,7 @@ impl GraphStore {
 
     /// Stores a single `CodeEntity` and updates all relevant indexes.
     ///
-    /// Used by the Reconciler for incremental updates — faster than a full
+    /// Used by the Reconciler for incremental updates -faster than a full
     /// `store_graph()` when only one file changed.
     ///
     /// NOTE: Cross-file call edges are not resolved here (that requires the
@@ -876,7 +876,7 @@ mod tests {
     fn impact_subtree_finds_callers() {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
-        // auth.rs is called by main.rs — impact_subtree should surface main.rs
+        // auth.rs is called by main.rs -impact_subtree should surface main.rs
         let affected = store.impact_subtree("src/auth.rs").unwrap();
         assert!(affected.contains(&"src/main.rs".to_string()),
             "main.rs calls into auth.rs, must appear in impact subtree");

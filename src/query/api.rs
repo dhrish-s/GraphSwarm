@@ -107,7 +107,7 @@ impl QueryEngine {
         for result in &mut results {
             if self.store.is_stale(&result.file_path).unwrap_or(false) {
                 result.stale_warning = Some(
-                    "File has pending changes — re-indexing in progress".to_string()
+                    "File has pending changes -re-indexing in progress".to_string()
                 );
             }
         }

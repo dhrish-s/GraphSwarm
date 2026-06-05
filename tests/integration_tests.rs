@@ -265,7 +265,7 @@ fn integration_stale_flag_round_trip() {
     // Mark auth.rs stale
     store.mark_stale("src/auth.rs").unwrap();
 
-    // Query — stale_warning must be Some
+    // Query -stale_warning must be Some
     let engine  = QueryEngine::new(store.clone(), History::new(kv.clone()));
     let results = engine.query("authenticate", 5).unwrap();
     assert!(!results.is_empty());
@@ -276,7 +276,7 @@ fn integration_stale_flag_round_trip() {
     // Clear stale
     store.clear_stale("src/auth.rs").unwrap();
 
-    // Query again — stale_warning must be None
+    // Query again -stale_warning must be None
     let engine2  = QueryEngine::new(store, History::new(kv));
     let results2 = engine2.query("authenticate", 5).unwrap();
     let auth2 = results2.iter().find(|r| r.file_path.contains("auth")).unwrap();

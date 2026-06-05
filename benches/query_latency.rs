@@ -66,7 +66,7 @@ fn setup_large_graph() -> (TempDir, std::path::PathBuf) {
 }
 
 fn bench_query_warm(c: &mut Criterion) {
-    // DB opened once outside the measured loop — all reads hit the OS page cache.
+    // DB opened once outside the measured loop -all reads hit the OS page cache.
     let (_dir, db) = setup_large_graph();
     let kv      = KvBackend::open(&db).unwrap();
     let store   = GraphStore::new(kv.clone());
@@ -81,7 +81,7 @@ fn bench_query_warm(c: &mut Criterion) {
 }
 
 fn bench_query_cold(c: &mut Criterion) {
-    // DB reopened each iteration — simulates a cold process start.
+    // DB reopened each iteration -simulates a cold process start.
     // This is significantly slower than warm because sled must load B-tree pages.
     let (_dir, db) = setup_large_graph();
 

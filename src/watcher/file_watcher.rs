@@ -5,7 +5,7 @@
 //! into a single logical event per 500ms window.
 //!
 //! In debouncer v0.4 the `DebouncedEvent` exposes only `DebouncedEventKind::Any`
-//! or `AnyContinuous` — it does not expose the underlying notify event type.
+//! or `AnyContinuous` -it does not expose the underlying notify event type.
 //! We infer Created/Modified vs Deleted by checking whether the path still
 //! exists on disk after the debounce window expires.
 //!

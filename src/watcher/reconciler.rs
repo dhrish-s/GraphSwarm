@@ -2,19 +2,19 @@
 //!
 //! For each event:
 //!   Modified / Created →
-//!     1. mark_stale(path)         — query results warn about this file
-//!     2. delete_file(path)        — remove stale entities + cascaded edges
-//!     3. re-index the file        — parse, extract entities
-//!     4. merge new entities       — store_file_entities()
-//!     5. clear_stale(path)        — remove stale warning
+//!     1. mark_stale(path)         -query results warn about this file
+//!     2. delete_file(path)        -remove stale entities + cascaded edges
+//!     3. re-index the file        -parse, extract entities
+//!     4. merge new entities       -store_file_entities()
+//!     5. clear_stale(path)        -remove stale warning
 //!
 //!   Deleted →
 //!     1. mark_stale(path)
 //!     2. delete_file(path)
-//!     (no re-index — file is gone)
+//!     (no re-index -file is gone)
 //!
 //!   Renamed →
-//!     1. delete_file(old path, inferred from event)  — may be the same path
+//!     1. delete_file(old path, inferred from event)  -may be the same path
 //!     2. treat new path as Modified
 
 use std::path::{Path, PathBuf};
@@ -42,7 +42,7 @@ impl Reconciler {
 
     /// Runs the reconcile loop until the channel closes.
     ///
-    /// This is an async function — it should be spawned as a Tokio task.
+    /// This is an async function -it should be spawned as a Tokio task.
     pub async fn run(mut self) {
         eprintln!("[graphswarm reconciler] started");
 
@@ -83,7 +83,7 @@ impl Reconciler {
         // to entities from this file. For single-file accuracy we build a
         // mini graph from just this file.
         if !path.exists() {
-            // File may have been deleted between event and now — treat as deletion.
+            // File may have been deleted between event and now -treat as deletion.
             return Ok(());
         }
 
@@ -108,7 +108,7 @@ impl Reconciler {
         let path_str = path.to_string_lossy().to_string();
         self.store.mark_stale(&path_str)?;
         self.store.delete_file(&path_str)?;
-        // Don't clear_stale — the file is gone so there's nothing to re-index.
+        // Don't clear_stale -the file is gone so there's nothing to re-index.
         // Queries will show the warning, reminding users the file was removed.
         eprintln!("[graphswarm reconciler] deleted {path_str}");
         Ok(())

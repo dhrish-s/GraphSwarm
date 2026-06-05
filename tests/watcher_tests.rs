@@ -1,6 +1,6 @@
 //! Integration tests for the file watcher and reconciler.
 //!
-//! These tests exercise real filesystem events — they write files, wait for
+//! These tests exercise real filesystem events -they write files, wait for
 //! events, and verify the reconciler updated the GraphStore correctly.
 
 use std::io::Write;

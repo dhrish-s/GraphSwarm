@@ -3,10 +3,10 @@
 //! Answers the question: "Given a natural language query, which files are most relevant?"
 //!
 //! Four signals combined with fixed weights:
-//!   name match    (0.4) — does the entity name match the query tokens?
-//!   graph distance (0.3) — is this entity near a name-matching entity?
-//!   recency        (0.2) — did the agent touch this file recently?
-//!   docstring      (0.1) — does the documentation mention the query?
+//!   name match    (0.4) -does the entity name match the query tokens?
+//!   graph distance (0.3) -is this entity near a name-matching entity?
+//!   recency        (0.2) -did the agent touch this file recently?
+//!   docstring      (0.1) -does the documentation mention the query?
 //!
 //! Entry point: [`QueryEngine::query(q, top_k)`] → [`Vec<RelevantFile>`]
 
@@ -14,7 +14,7 @@ pub mod api;
 pub mod ranker;
 pub mod relevance;
 
-/// Internal type module — `RelevantFile` is shared by both `api.rs` and
+/// Internal type module -`RelevantFile` is shared by both `api.rs` and
 /// `ranker.rs`. Defining it here as a sibling avoids any circular imports.
 pub(crate) mod mod_types {
     use crate::indexer::extractor::CodeEntity;
