@@ -1,5 +1,4 @@
 use clap::Args;
-use std::path::PathBuf;
 use crate::error::{Error, Result};
 use crate::query::QueryEngine;
 use crate::storage::{GraphStore, KvBackend};
@@ -10,8 +9,8 @@ pub struct QueryCommand {
     /// Query expression, e.g. "authenticate" or "callers src/auth.rs::verify_token"
     pub query: Vec<String>,
 
-    /// Path to index file or repository root
-    #[arg(long, default_value = ".graphswarm/index.db")]
+    /// Path to the GraphSwarm DB directory (default: .graphswarm/db)
+    #[arg(long, default_value = ".graphswarm/db")]
     pub index: String,
 
     /// Number of results
@@ -25,11 +24,22 @@ pub struct QueryCommand {
 
 impl QueryCommand {
     pub async fn execute(&self) -> Result<()> {
-        let repo_root = Self::resolve_repo_root(&self.index)?;
-
-        // Open the existing KV store -no re-indexing.
-        // Run `graphswarm index <path>` first to populate the store.
-        let db_path = repo_root.join(".graphswarm_db");
+        // --index is the path to the sled DB directory itself.
+        // Default: .graphswarm/db  (written by `graphswarm index <path>`)
+        // The caller can also pass a repo root explicitly:
+        //   graphswarm query --index ./my-project "auth"
+        // which resolves to ./my-project/.graphswarm/db
+        let db_path = {
+            let p = std::path::PathBuf::from(&self.index);
+            // If the user passed a repo root (an existing dir that isn't a
+            // sled DB), derive the db path from it.  A sled DB directory
+            // contains a "db" file; a plain repo root won't have that.
+            if p.is_dir() && !p.join("db").exists() {
+                p.join(".graphswarm").join("db")
+            } else {
+                p
+            }
+        };
         let kv    = KvBackend::open(&db_path)?;
         let store = GraphStore::new(kv.clone());
         let history = History::new(kv);
@@ -83,26 +93,6 @@ impl QueryCommand {
                 Ok(())
             }
         }
-    }
-
-    fn resolve_repo_root(index_path: &str) -> Result<PathBuf> {
-        let path = PathBuf::from(index_path);
-        if path.is_dir() {
-            return Ok(path);
-        }
-
-        if let Some(parent) = path.parent() {
-            if parent.file_name().and_then(|n| n.to_str()) == Some(".graphswarm") {
-                if let Some(repo_root) = parent.parent() {
-                    return Ok(repo_root.to_path_buf());
-                }
-            }
-            if parent.exists() {
-                return Ok(parent.to_path_buf());
-            }
-        }
-
-        std::env::current_dir().map_err(Error::from)
     }
 
     fn parse_depth(depth: &str) -> Result<usize> {

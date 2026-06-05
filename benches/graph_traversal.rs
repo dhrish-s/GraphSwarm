@@ -25,9 +25,6 @@ fn setup_branching_graph() -> (TempDir, GraphStore, String) {
     graph.set_repo_path("./bench".into());
 
     // Build a 5-ary tree: 1 root → 5 children → 25 grandchildren → 125 → 250 → 500 leaves
-    let mut id_counter = 0usize;
-    let mut make_id = || { let id = id_counter; id_counter += 1; id };
-
     fn build_tree(
         graph: &mut CallGraph,
         parent_id: Option<String>,

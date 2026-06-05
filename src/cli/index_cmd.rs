@@ -98,8 +98,8 @@ impl IndexCommand {
         println!("Wrote graph to: {}", out_file.to_string_lossy());
 
         // Persist the graph to the KV store so `graphswarm query` can read
-        // it without re-indexing.  The store lives at <repo>/.graphswarm_db/.
-        let db_path = repo_path.join(".graphswarm_db");
+        // it without re-indexing.  The store lives at <repo>/.graphswarm/db/.
+        let db_path = repo_path.join(".graphswarm").join("db");
         let kv = KvBackend::open(&db_path)?;
         let store = GraphStore::new(kv.clone());
         store.store_graph(&graph)?;

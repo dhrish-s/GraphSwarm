@@ -31,7 +31,7 @@ pub struct ExportCommand {
 impl ExportCommand {
     pub async fn execute(&self) -> Result<()> {
         let repo_root = PathBuf::from(&self.path);
-        let db_path   = repo_root.join(".graphswarm_db");
+        let db_path   = repo_root.join(".graphswarm").join("db");
         let out_dir   = PathBuf::from(&self.output);
 
         std::fs::create_dir_all(&out_dir).map_err(|e| {
@@ -40,8 +40,25 @@ impl ExportCommand {
 
         let kv    = KvBackend::open(&db_path)?;
         let store = GraphStore::new(kv);
-        let graph = store.load_graph()?;
+        let mut graph = store.load_graph()?;
         let meta  = graph.metadata.clone();
+
+        // Filter out dangling edges: edges where the callee was never indexed
+        // (e.g. calls to stdlib functions like thread::sleep, println!, vec!).
+        // D3.js crashes with "node not found" if a link references an ID that
+        // has no corresponding node in the nodes array.
+        {
+            use std::collections::HashSet;
+            let entity_ids: HashSet<&String> = graph.entities.keys().collect();
+            let before = graph.edges.len();
+            graph.edges.retain(|(src, tgt)| {
+                entity_ids.contains(src) && entity_ids.contains(tgt)
+            });
+            let filtered = before - graph.edges.len();
+            if filtered > 0 {
+                println!("Filtered {filtered} dangling edges (external/stdlib calls)");
+            }
+        }
 
         match self.format.as_str() {
             "json"     => self.export_json(&graph, &out_dir)?,

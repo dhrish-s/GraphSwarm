@@ -5,7 +5,7 @@
 //   bench_history_recent_files   < 5 ms
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use graphswarm::storage::{GraphStore, KvBackend};
+use graphswarm::storage::KvBackend;
 use graphswarm::tracker::{ActionLogger, History};
 use graphswarm::storage::schema::{action_key, history_count_key, history_recent_key};
 use graphswarm::tracker::action_log::{ActionType, AgentAction, FileAccessCount};
@@ -21,7 +21,8 @@ fn bench_action_log_throughput(c: &mut Criterion) {
     let kv  = KvBackend::open(dir.path()).unwrap();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let logger = ActionLogger::new(kv);
+    // ActionLogger::new calls tokio::spawn internally; must run inside the runtime.
+    let logger = rt.block_on(async { ActionLogger::new(kv) });
 
     c.bench_function("action_log_file_read", |b| {
         b.iter(|| {

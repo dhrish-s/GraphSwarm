@@ -14,8 +14,9 @@ flamegraph.svg
 *.profraw
 *.profdata
 /coverage/
-.graphswarm/
-*.db
-*.log
+**/.graphswarm/
+graphswarm-out/
+graphswarm_output/
+target/criterion/
 Thumbs.db
 *.tmp

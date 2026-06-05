@@ -23,7 +23,7 @@ pub struct ServerCommand {
 impl ServerCommand {
     pub async fn execute(&self) -> Result<()> {
         let repo_root = PathBuf::from(&self.path);
-        let db_path   = repo_root.join(".graphswarm_db");
+        let db_path   = repo_root.join(".graphswarm").join("db");
         let server    = McpServer::new(db_path.clone());
 
         if !self.watch {
