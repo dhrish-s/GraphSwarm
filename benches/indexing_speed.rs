@@ -35,7 +35,7 @@ fn bench_index_100_files(c: &mut Criterion) {
     c.bench_function("index_100_files", |b| {
         b.iter(|| {
             let indexer = CodeIndexer::new("auto").unwrap();
-            let _graph = indexer.index_directory(&path).unwrap();
+            let _graph = indexer.index_directory(&path, &[]).unwrap();
         });
     });
 }
@@ -54,7 +54,7 @@ fn bench_index_1_file(c: &mut Criterion) {
     c.bench_function("index_1_file", |b| {
         b.iter(|| {
             let indexer = CodeIndexer::new("auto").unwrap();
-            let _graph = indexer.index_directory(&path).unwrap();
+            let _graph = indexer.index_directory(&path, &[]).unwrap();
         });
     });
 }

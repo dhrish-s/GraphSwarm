@@ -17,6 +17,13 @@ struct ImportResolution {
     imported_name: String,
 }
 
+fn is_excluded(path: &Path, patterns: &[String]) -> bool {
+    path.components().any(|c| {
+        let s = c.as_os_str().to_string_lossy().to_lowercase();
+        patterns.iter().any(|p| s == p.to_lowercase())
+    })
+}
+
 /// Top-level indexer that parses a repo and produces a CallGraph.
 pub struct CodeIndexer {
     parser: CodeParser,
@@ -30,7 +37,7 @@ impl CodeIndexer {
     }
 
     /// Index every source file under `path` and build a call graph with cross-file resolution.
-    pub fn index_directory(&self, _path: impl AsRef<Path>) -> Result<CallGraph> {
+    pub fn index_directory(&self, _path: impl AsRef<Path>, exclude: &[String]) -> Result<CallGraph> {
         let path = _path.as_ref();
         let mut graph = CallGraph::new();
         graph.set_repo_path(path.to_string_lossy().into_owned());
@@ -47,12 +54,16 @@ impl CodeIndexer {
             all_entities: &mut Vec<CodeEntity>,
             all_imports: &mut Vec<Import>,
             file_to_module: &mut HashMap<String, String>,
+            exclude: &[String],
         ) -> Result<()> {
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
                 let p = entry.path();
+                if is_excluded(&p, exclude) {
+                    continue;
+                }
                 if p.is_dir() {
-                    visit_dir(indexer, &p, root, all_entities, all_imports, file_to_module)?;
+                    visit_dir(indexer, &p, root, all_entities, all_imports, file_to_module, exclude)?;
                     continue;
                 }
 
@@ -104,6 +115,7 @@ impl CodeIndexer {
             &mut all_entities,
             &mut all_imports,
             &mut file_to_module,
+            exclude,
         )?;
 
         // Add all entities to graph and add intra-file calls
@@ -294,7 +306,7 @@ mod tests {
         writeln!(f, "def foo():\n    pass\n\ndef bar():\n    foo()\n").unwrap();
 
         let indexer = CodeIndexer::new("auto").unwrap();
-        let graph = indexer.index_directory(dir.path()).unwrap();
+        let graph = indexer.index_directory(dir.path(), &[]).unwrap();
 
         assert_eq!(graph.entity_count(), 2);
         assert_eq!(graph.edge_count(), 1);
@@ -319,7 +331,7 @@ mod tests {
         .unwrap();
 
         let indexer = CodeIndexer::new("auto").unwrap();
-        let graph = indexer.index_directory(dir.path()).unwrap();
+        let graph = indexer.index_directory(dir.path(), &[]).unwrap();
 
         // Should have 2 entities and at least 1 edge (cross-file call)
         assert_eq!(graph.entity_count(), 2);
@@ -341,7 +353,7 @@ mod tests {
         writeln!(f2, "from utils import helper as h\n\ndef run():\n    h()\n").unwrap();
 
         let indexer = CodeIndexer::new("auto").unwrap();
-        let graph = indexer.index_directory(dir.path()).unwrap();
+        let graph = indexer.index_directory(dir.path(), &[]).unwrap();
 
         assert_eq!(graph.entity_count(), 2);
         // Alias resolution should find the call
@@ -365,7 +377,7 @@ mod tests {
         .unwrap();
 
         let indexer = CodeIndexer::new("auto").unwrap();
-        let graph = indexer.index_directory(dir.path()).unwrap();
+        let graph = indexer.index_directory(dir.path(), &[]).unwrap();
 
         assert_eq!(graph.entity_count(), 2);
         assert!(
@@ -387,7 +399,7 @@ mod tests {
         writeln!(f2, "use foo::helper;\n\nfn run() {{\n    helper();\n}}\n").unwrap();
 
         let indexer = CodeIndexer::new("auto").unwrap();
-        let graph = indexer.index_directory(dir.path()).unwrap();
+        let graph = indexer.index_directory(dir.path(), &[]).unwrap();
 
         assert_eq!(graph.entity_count(), 2);
         assert!(
@@ -406,7 +418,7 @@ mod tests {
         writeln!(f, "def foo():\n    undefined_func()\n").unwrap();
 
         let indexer = CodeIndexer::new("auto").unwrap();
-        let graph = indexer.index_directory(dir.path()).unwrap();
+        let graph = indexer.index_directory(dir.path(), &[]).unwrap();
 
         // Should not crash, entity is present
         assert_eq!(graph.entity_count(), 1);

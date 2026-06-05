@@ -55,7 +55,8 @@ impl IndexCommand {
         }
 
         let indexer = CodeIndexer::new(&self.language)?;
-        let graph = indexer.index_directory(&self.path)?;
+        let exclude_patterns = self.exclude.clone().unwrap_or_default();
+        let graph = indexer.index_directory(&self.path, &exclude_patterns)?;
 
         // Handle empty repo
         if graph.files().is_empty() {

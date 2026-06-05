@@ -46,7 +46,7 @@ fn integration_index_and_query_rust_files() {
     write_file(&dir, "db.rs", "fn db_query() {}\n");
 
     let indexer = CodeIndexer::new("auto").unwrap();
-    let graph = indexer.index_directory(dir.path()).unwrap();
+    let graph = indexer.index_directory(dir.path(), &[]).unwrap();
 
     let kv = KvBackend::open(&dir.path().join("db")).unwrap();
     let store = GraphStore::new(kv.clone());
