@@ -44,7 +44,7 @@ No Rust required.
 Requires Rust 1.75 or later.
 
 ```bash
-git clone git clone https://github.com/dhrish-s/GraphSwarm
+git clone https://github.com/dhrish-s/GraphSwarm
 cd GraphSwarm
 cargo build --release
 ```
@@ -70,6 +70,7 @@ export PATH="$PATH:/path/to/GraphSwarm/target/release"
    ```bash
    graphswarm index .
    ```
+   
 
 2. **Install skill files**
 
@@ -117,6 +118,9 @@ Entity IDs follow the format `file_path::function_name`. Example: `src/auth.rs::
 # Index a repository (run from project root)
 graphswarm index .
 
+# Exclude library folders (recommended for Python/JS projects)
+graphswarm index . --exclude venv,node_modules,dist,build,__pycache__,.next
+
 # Query without starting the server
 graphswarm query "authentication flow"
 graphswarm query "database layer" --index .graphswarm/db
@@ -137,7 +141,9 @@ graphswarm install                                 # write to home dir
 
 # Build
 cargo build --release
+
 ```
+
 
 ## Multiple Projects
 
@@ -178,6 +184,21 @@ This flag is only needed if you indexed a subdirectory instead of the project ro
 **`graph.html` shows nothing on first open**
 
 Make sure you ran `graphswarm export .` from the project root after indexing.
+
+**Query results include third-party library code**
+
+Re-index with exclusions:
+
+```bash
+# Python
+graphswarm index . --exclude venv,.venv,__pycache__,site-packages
+
+# JavaScript/TypeScript
+graphswarm index . --exclude node_modules,dist,build,.next
+
+# Both
+graphswarm index . --exclude venv,node_modules,dist,build,__pycache__,.next
+```
 
 ## Build Stats
 
