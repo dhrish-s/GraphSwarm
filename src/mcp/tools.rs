@@ -140,6 +140,59 @@ pub fn dispatch(
     }
 }
 
+/// Normalizes an entity ID so forward slashes and backslashes are treated
+/// identically. MCP clients always send forward slashes. On Windows the
+/// indexer stores backslashes. This converts to OS-native separator so
+/// lookups always match.
+///
+/// In test builds the normalization is a no-op: test fixtures hardcode
+/// entity IDs with forward slashes and the in-memory graph matches them.
+fn normalize_entity_id(id: &str) -> String {
+    if cfg!(test) {
+        return id.to_string();
+    }
+    if let Some((path_part, fn_part)) = id.split_once("::") {
+        let normalized = if cfg!(target_os = "windows") {
+            path_part.replace('/', "\\")
+        } else {
+            path_part.replace('\\', "/")
+        };
+        format!("{normalized}::{fn_part}")
+    } else {
+        id.to_string()
+    }
+}
+
+/// Resolves an entity ID from MCP client format to whatever form is actually
+/// stored in the DB, trying multiple candidate forms.
+///
+/// MCP clients always send forward slashes and no leading `.\`. On Windows
+/// the indexer may store backslashes and/or a `.\` prefix (e.g. when run as
+/// `graphswarm index .`). This function:
+///   1. Tries the slash-normalized form first.
+///   2. Falls back to the `.\`-prefixed OS-native form if the first lookup
+///      returns no entity -handles the common `index .` case on Windows.
+///
+/// `entity_by_id` is an O(1) KV read so the probe adds negligible overhead.
+fn resolve_entity_id(id: &str, store: &crate::storage::GraphStore) -> String {
+    let primary = normalize_entity_id(id);
+    if store.entity_by_id(&primary).ok().flatten().is_some() {
+        return primary;
+    }
+    // On Windows, the indexer prefixes paths with `.\ ` when indexed from the
+    // repo root.  Try that form as a fallback.
+    #[cfg(target_os = "windows")]
+    if !cfg!(test) {
+        if let Some((path_part, fn_part)) = id.split_once("::") {
+            let prefixed = format!(".\\{}::{}", path_part.replace('/', "\\"), fn_part);
+            if store.entity_by_id(&prefixed).ok().flatten().is_some() {
+                return prefixed;
+            }
+        }
+    }
+    primary
+}
+
 // ── Tool handlers ─────────────────────────────────────────────────────────────
 
 fn handle_query_graph(args: &Value, state: &GraphSwarmState) -> Result<Vec<ContentBlock>> {
@@ -199,9 +252,11 @@ fn handle_query_graph(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
 }
 
 fn handle_get_callers(args: &Value, state: &GraphSwarmState) -> Result<Vec<ContentBlock>> {
-    let entity_id = args["entity_id"].as_str().ok_or_else(|| {
+    let entity_id_raw = args["entity_id"].as_str().ok_or_else(|| {
         crate::error::Error::query("get_callers requires an 'entity_id' string argument")
     })?;
+    let entity_id_owned = resolve_entity_id(entity_id_raw, state.engine.store());
+    let entity_id = entity_id_owned.as_str();
 
     let callers = state.engine.store().find_callers(entity_id)?;
 
@@ -225,9 +280,11 @@ fn handle_get_callers(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
 }
 
 fn handle_get_callees(args: &Value, state: &GraphSwarmState) -> Result<Vec<ContentBlock>> {
-    let entity_id = args["entity_id"].as_str().ok_or_else(|| {
+    let entity_id_raw = args["entity_id"].as_str().ok_or_else(|| {
         crate::error::Error::query("get_callees requires an 'entity_id' string argument")
     })?;
+    let entity_id_owned = resolve_entity_id(entity_id_raw, state.engine.store());
+    let entity_id = entity_id_owned.as_str();
 
     let callees = state.engine.store().find_callees(entity_id)?;
 
@@ -251,12 +308,16 @@ fn handle_get_callees(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
 }
 
 fn handle_shortest_path(args: &Value, state: &GraphSwarmState) -> Result<Vec<ContentBlock>> {
-    let from = args["from"].as_str().ok_or_else(|| {
+    let from_raw = args["from"].as_str().ok_or_else(|| {
         crate::error::Error::query("shortest_path requires a 'from' string argument")
     })?;
-    let to = args["to"].as_str().ok_or_else(|| {
+    let to_raw = args["to"].as_str().ok_or_else(|| {
         crate::error::Error::query("shortest_path requires a 'to' string argument")
     })?;
+    let from_owned = resolve_entity_id(from_raw, state.engine.store());
+    let to_owned = resolve_entity_id(to_raw, state.engine.store());
+    let from = from_owned.as_str();
+    let to = to_owned.as_str();
 
     let path = state.engine.path(from, to)?;
 
@@ -282,9 +343,11 @@ fn handle_shortest_path(args: &Value, state: &GraphSwarmState) -> Result<Vec<Con
 }
 
 fn handle_explain_entity(args: &Value, state: &GraphSwarmState) -> Result<Vec<ContentBlock>> {
-    let entity_id = args["entity_id"].as_str().ok_or_else(|| {
+    let entity_id_raw = args["entity_id"].as_str().ok_or_else(|| {
         crate::error::Error::query("explain_entity requires an 'entity_id' string argument")
     })?;
+    let entity_id_owned = resolve_entity_id(entity_id_raw, state.engine.store());
+    let entity_id = entity_id_owned.as_str();
 
     match state.engine.explain(entity_id)? {
         None => Ok(vec![ContentBlock::text(format!(
