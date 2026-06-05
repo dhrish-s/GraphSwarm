@@ -37,7 +37,11 @@ impl CodeIndexer {
     }
 
     /// Index every source file under `path` and build a call graph with cross-file resolution.
-    pub fn index_directory(&self, _path: impl AsRef<Path>, exclude: &[String]) -> Result<CallGraph> {
+    pub fn index_directory(
+        &self,
+        _path: impl AsRef<Path>,
+        exclude: &[String],
+    ) -> Result<CallGraph> {
         let path = _path.as_ref();
         let mut graph = CallGraph::new();
         graph.set_repo_path(path.to_string_lossy().into_owned());
@@ -63,7 +67,15 @@ impl CodeIndexer {
                     continue;
                 }
                 if p.is_dir() {
-                    visit_dir(indexer, &p, root, all_entities, all_imports, file_to_module, exclude)?;
+                    visit_dir(
+                        indexer,
+                        &p,
+                        root,
+                        all_entities,
+                        all_imports,
+                        file_to_module,
+                        exclude,
+                    )?;
                     continue;
                 }
 
