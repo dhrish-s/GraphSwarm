@@ -31,17 +31,16 @@ pub struct ExportCommand {
 impl ExportCommand {
     pub async fn execute(&self) -> Result<()> {
         let repo_root = PathBuf::from(&self.path);
-        let db_path   = repo_root.join(".graphswarm").join("db");
-        let out_dir   = PathBuf::from(&self.output);
+        let db_path = repo_root.join(".graphswarm").join("db");
+        let out_dir = PathBuf::from(&self.output);
 
-        std::fs::create_dir_all(&out_dir).map_err(|e| {
-            crate::error::Error::storage(format!("Cannot create output dir: {e}"))
-        })?;
+        std::fs::create_dir_all(&out_dir)
+            .map_err(|e| crate::error::Error::storage(format!("Cannot create output dir: {e}")))?;
 
-        let kv    = KvBackend::open(&db_path)?;
+        let kv = KvBackend::open(&db_path)?;
         let store = GraphStore::new(kv);
         let mut graph = store.load_graph()?;
-        let meta  = graph.metadata.clone();
+        let meta = graph.metadata.clone();
 
         // Filter out dangling edges: edges where the callee was never indexed
         // (e.g. calls to stdlib functions like thread::sleep, println!, vec!).
@@ -51,9 +50,9 @@ impl ExportCommand {
             use std::collections::HashSet;
             let entity_ids: HashSet<&String> = graph.entities.keys().collect();
             let before = graph.edges.len();
-            graph.edges.retain(|(src, tgt)| {
-                entity_ids.contains(src) && entity_ids.contains(tgt)
-            });
+            graph
+                .edges
+                .retain(|(src, tgt)| entity_ids.contains(src) && entity_ids.contains(tgt));
             let filtered = before - graph.edges.len();
             if filtered > 0 {
                 println!("Filtered {filtered} dangling edges (external/stdlib calls)");
@@ -61,10 +60,10 @@ impl ExportCommand {
         }
 
         match self.format.as_str() {
-            "json"     => self.export_json(&graph, &out_dir)?,
-            "html"     => self.export_html(&graph, &out_dir)?,
+            "json" => self.export_json(&graph, &out_dir)?,
+            "html" => self.export_html(&graph, &out_dir)?,
             "markdown" => self.export_markdown(&graph, &meta, &out_dir)?,
-            _          => {
+            _ => {
                 // "all" or anything unrecognised → write everything
                 self.export_json(&graph, &out_dir)?;
                 self.export_html(&graph, &out_dir)?;
@@ -79,13 +78,15 @@ impl ExportCommand {
     /// Writes `graph.json` -full serialized CallGraph.
     fn export_json(&self, graph: &CallGraph, out_dir: &Path) -> Result<()> {
         let path = out_dir.join("graph.json");
-        let json = serde_json::to_string_pretty(graph).map_err(|e| {
-            crate::error::Error::serialization(format!("JSON export failed: {e}"))
-        })?;
-        std::fs::write(&path, json).map_err(|e| {
-            crate::error::Error::storage(format!("Cannot write graph.json: {e}"))
-        })?;
-        println!("  graph.json ({} entities, {} edges)", graph.entities.len(), graph.edges.len());
+        let json = serde_json::to_string_pretty(graph)
+            .map_err(|e| crate::error::Error::serialization(format!("JSON export failed: {e}")))?;
+        std::fs::write(&path, json)
+            .map_err(|e| crate::error::Error::storage(format!("Cannot write graph.json: {e}")))?;
+        println!(
+            "  graph.json ({} entities, {} edges)",
+            graph.entities.len(),
+            graph.edges.len()
+        );
         Ok(())
     }
 
@@ -101,26 +102,32 @@ impl ExportCommand {
     fn export_html(&self, graph: &CallGraph, out_dir: &Path) -> Result<()> {
         let path = out_dir.join("graph.html");
 
-        let nodes: Vec<serde_json::Value> = graph.entities.values().map(|e| {
-            serde_json::json!({
-                "id":   e.id,
-                "name": e.name,
-                "file": e.file_path,
-                "type": format!("{}", e.entity_type),
-                "lang": format!("{}", e.language),
+        let nodes: Vec<serde_json::Value> = graph
+            .entities
+            .values()
+            .map(|e| {
+                serde_json::json!({
+                    "id":   e.id,
+                    "name": e.name,
+                    "file": e.file_path,
+                    "type": format!("{}", e.entity_type),
+                    "lang": format!("{}", e.language),
+                })
             })
-        }).collect();
+            .collect();
 
-        let links: Vec<serde_json::Value> = graph.edges.iter().map(|(src, tgt)| {
-            serde_json::json!({ "source": src, "target": tgt })
-        }).collect();
+        let links: Vec<serde_json::Value> = graph
+            .edges
+            .iter()
+            .map(|(src, tgt)| serde_json::json!({ "source": src, "target": tgt }))
+            .collect();
 
         let nodes_json = serde_json::to_string(&nodes).unwrap_or_default();
         let links_json = serde_json::to_string(&links).unwrap_or_default();
-        let repo_path  = &graph.metadata.repo_path;
+        let repo_path = &graph.metadata.repo_path;
         let indexed_at = &graph.metadata.indexed_at;
         let n_entities = graph.entities.len();
-        let n_edges    = graph.edges.len();
+        let n_edges = graph.edges.len();
 
         // ── Part 1: static HTML structure (uses repo metadata format args) ────
         // r##"..."## avoids early termination from CSS hex colors like "#d2a8ff".
@@ -236,9 +243,8 @@ sim.on("tick", () => {
 
         let html = part1 + &part2 + &part3 + part4;
 
-        std::fs::write(&path, html).map_err(|e| {
-            crate::error::Error::storage(format!("Cannot write graph.html: {e}"))
-        })?;
+        std::fs::write(&path, html)
+            .map_err(|e| crate::error::Error::storage(format!("Cannot write graph.html: {e}")))?;
         println!("  graph.html (interactive, D3.js bundled -works offline)");
         Ok(())
     }
@@ -246,7 +252,12 @@ sim.on("tick", () => {
     /// Writes `GRAPH_REPORT.md` -human-readable analysis of the call graph.
     ///
     /// Includes god nodes, largest files, cross-module edges, and suggested questions.
-    fn export_markdown(&self, graph: &CallGraph, meta: &GraphMetadata, out_dir: &Path) -> Result<()> {
+    fn export_markdown(
+        &self,
+        graph: &CallGraph,
+        meta: &GraphMetadata,
+        out_dir: &Path,
+    ) -> Result<()> {
         use std::collections::HashMap;
 
         let path = out_dir.join("GRAPH_REPORT.md");
@@ -255,30 +266,39 @@ sim.on("tick", () => {
         let mut degree: HashMap<&str, usize> = HashMap::new();
         for (caller, callee) in &graph.edges {
             *degree.entry(caller.as_str()).or_default() += 1;
-            *degree.entry(callee.as_str()).or_default()  += 1;
+            *degree.entry(callee.as_str()).or_default() += 1;
         }
         let mut sorted: Vec<(&&str, &usize)> = degree.iter().collect();
         sorted.sort_by(|a, b| b.1.cmp(a.1));
-        let god_nodes: Vec<String> = sorted.iter().take(5).map(|(id, deg)| {
-            if let Some(e) = graph.entities.get(**id) {
-                format!("- **{}** (`{}`) -{} connections", e.name, e.file_path, deg)
-            } else {
-                format!("- `{}` -{} connections", id, deg)
-            }
-        }).collect();
+        let god_nodes: Vec<String> = sorted
+            .iter()
+            .take(5)
+            .map(|(id, deg)| {
+                if let Some(e) = graph.entities.get(**id) {
+                    format!("- **{}** (`{}`) -{} connections", e.name, e.file_path, deg)
+                } else {
+                    format!("- `{}` -{} connections", id, deg)
+                }
+            })
+            .collect();
 
         // Cross-module edges: caller and callee in different top-level directories
-        let cross_edges: Vec<String> = graph.edges.iter().filter_map(|(caller, callee)| {
-            let cd = caller.split('/').nth(1).unwrap_or("");
-            let td = callee.split('/').nth(1).unwrap_or("");
-            if cd != td && !cd.is_empty() && !td.is_empty() {
-                let cn = caller.split("::").last().unwrap_or(caller);
-                let tn = callee.split("::").last().unwrap_or(callee);
-                Some(format!("- `{cn}` → `{tn}` (cross-module)"))
-            } else {
-                None
-            }
-        }).take(5).collect();
+        let cross_edges: Vec<String> = graph
+            .edges
+            .iter()
+            .filter_map(|(caller, callee)| {
+                let cd = caller.split('/').nth(1).unwrap_or("");
+                let td = callee.split('/').nth(1).unwrap_or("");
+                if cd != td && !cd.is_empty() && !td.is_empty() {
+                    let cn = caller.split("::").last().unwrap_or(caller);
+                    let tn = callee.split("::").last().unwrap_or(callee);
+                    Some(format!("- `{cn}` → `{tn}` (cross-module)"))
+                } else {
+                    None
+                }
+            })
+            .take(5)
+            .collect();
 
         // Largest files by entity count
         let mut file_counts: HashMap<&String, usize> = HashMap::new();
@@ -287,12 +307,14 @@ sim.on("tick", () => {
         }
         let mut by_file: Vec<_> = file_counts.into_iter().collect();
         by_file.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
-        let largest: Vec<String> = by_file.iter().take(5)
+        let largest: Vec<String> = by_file
+            .iter()
+            .take(5)
             .map(|(f, n)| format!("- `{f}` -{n} entities"))
             .collect();
 
         let report = format!(
-r#"# GraphSwarm Report
+            r#"# GraphSwarm Report
 
 **Repository:** {repo}
 **Indexed:** {indexed}
@@ -336,16 +358,27 @@ graphswarm server   # start MCP server for Claude Code
 
 *Generated by GraphSwarm v{ver}*
 "#,
-            repo     = meta.repo_path,
-            indexed  = meta.indexed_at,
+            repo = meta.repo_path,
+            indexed = meta.indexed_at,
             entities = meta.total_entities,
-            files    = meta.total_files,
-            edges    = graph.edges.len(),
-            god      = if god_nodes.is_empty()  { "_(none found)_".into() } else { god_nodes.join("\n")  },
-            largest  = if largest.is_empty()     { "_(none found)_".into() } else { largest.join("\n")     },
-            cross    = if cross_edges.is_empty() { "_(none -clean module boundaries!)_".into() }
-                       else { cross_edges.join("\n") },
-            ver      = env!("CARGO_PKG_VERSION"),
+            files = meta.total_files,
+            edges = graph.edges.len(),
+            god = if god_nodes.is_empty() {
+                "_(none found)_".into()
+            } else {
+                god_nodes.join("\n")
+            },
+            largest = if largest.is_empty() {
+                "_(none found)_".into()
+            } else {
+                largest.join("\n")
+            },
+            cross = if cross_edges.is_empty() {
+                "_(none -clean module boundaries!)_".into()
+            } else {
+                cross_edges.join("\n")
+            },
+            ver = env!("CARGO_PKG_VERSION"),
         );
 
         std::fs::write(&path, report).map_err(|e| {

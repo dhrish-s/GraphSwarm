@@ -19,6 +19,6 @@ pub mod protocol;
 pub mod server;
 pub mod tools;
 
+pub use protocol::{ContentBlock, McpErrorResponse, McpRequest, McpResponse, ToolDefinition};
 pub use server::McpServer;
 pub use tools::{tool_definitions, GraphSwarmState};
-pub use protocol::{McpRequest, McpResponse, McpErrorResponse, ContentBlock, ToolDefinition};

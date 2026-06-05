@@ -21,9 +21,9 @@ use tempfile::TempDir;
 /// Returns the TempDir (keeps DB alive while the test runs).
 fn setup_large_graph() -> (TempDir, std::path::PathBuf) {
     let dir = TempDir::new().unwrap();
-    let db  = dir.path().join("bench_db");
+    let db = dir.path().join("bench_db");
 
-    let kv    = KvBackend::open(&db).unwrap();
+    let kv = KvBackend::open(&db).unwrap();
     let store = GraphStore::new(kv);
 
     let mut graph = CallGraph::new();
@@ -33,7 +33,7 @@ fn setup_large_graph() -> (TempDir, std::path::PathBuf) {
     for file_idx in 0..20usize {
         let file = format!("src/module_{file_idx}.rs");
         for fn_idx in 0..50usize {
-            let id   = format!("{file}::func_{fn_idx}");
+            let id = format!("{file}::func_{fn_idx}");
             let name = format!("func_{fn_idx}");
             let docstring = if fn_idx == 0 {
                 Some(format!("Authenticates user in module {file_idx}"))
@@ -46,11 +46,13 @@ fn setup_large_graph() -> (TempDir, std::path::PathBuf) {
                 vec![]
             };
             graph.add_entity(CodeEntity {
-                id, name, entity_type: EntityType::Function,
+                id,
+                name,
+                entity_type: EntityType::Function,
                 file_path: file.clone(),
                 line_start: (fn_idx * 5 + 1) as u32,
-                line_end:   (fn_idx * 5 + 4) as u32,
-                language:   Language::Rust,
+                line_end: (fn_idx * 5 + 4) as u32,
+                language: Language::Rust,
                 docstring,
                 calls: calls.clone(),
                 called_by: vec![],
@@ -68,10 +70,10 @@ fn setup_large_graph() -> (TempDir, std::path::PathBuf) {
 fn bench_query_warm(c: &mut Criterion) {
     // DB opened once outside the measured loop -all reads hit the OS page cache.
     let (_dir, db) = setup_large_graph();
-    let kv      = KvBackend::open(&db).unwrap();
-    let store   = GraphStore::new(kv.clone());
+    let kv = KvBackend::open(&db).unwrap();
+    let store = GraphStore::new(kv.clone());
     let history = History::new(kv);
-    let engine  = QueryEngine::new(store, history);
+    let engine = QueryEngine::new(store, history);
 
     c.bench_function("query_warm", |b| {
         b.iter(|| {
@@ -87,10 +89,10 @@ fn bench_query_cold(c: &mut Criterion) {
 
     c.bench_function("query_cold", |b| {
         b.iter(|| {
-            let kv      = KvBackend::open(&db).unwrap();
-            let store   = GraphStore::new(kv.clone());
+            let kv = KvBackend::open(&db).unwrap();
+            let store = GraphStore::new(kv.clone());
             let history = History::new(kv);
-            let engine  = QueryEngine::new(store, history);
+            let engine = QueryEngine::new(store, history);
             let _ = engine.query("authenticate", 10).unwrap();
         });
     });

@@ -5,11 +5,11 @@
 
 use std::io::Write;
 use std::time::Duration;
-use tokio::time::timeout;
 use tempfile::TempDir;
+use tokio::time::timeout;
 
 use graphswarm::storage::{GraphStore, KvBackend};
-use graphswarm::watcher::{FileEvent, FileWatcher, is_source_file};
+use graphswarm::watcher::{is_source_file, FileEvent, FileWatcher};
 
 // ── is_source_file ───────────────────────────────────────────────────────────
 
@@ -63,7 +63,10 @@ async fn file_watcher_sends_modified_event() {
 
     // Modify the file
     {
-        let mut f = std::fs::OpenOptions::new().write(true).open(&file_path).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&file_path)
+            .unwrap();
         write!(f, "\nfn foo() {{}}").unwrap();
     }
 
@@ -75,7 +78,8 @@ async fn file_watcher_sends_modified_event() {
             }
         }
         None
-    }).await;
+    })
+    .await;
 
     assert!(result.is_ok(), "timed out waiting for Modified event");
     assert!(result.unwrap().is_some(), "no event for the modified file");
@@ -112,7 +116,7 @@ async fn reconciler_handles_modified_event() {
     let dir = TempDir::new().unwrap();
     let db_dir = dir.path().join(".graphswarm_db");
 
-    let kv    = KvBackend::open(&db_dir).unwrap();
+    let kv = KvBackend::open(&db_dir).unwrap();
     let store = GraphStore::new(kv);
 
     // Seed a file entity
@@ -129,18 +133,27 @@ async fn reconciler_handles_modified_event() {
 
 #[tokio::test]
 async fn reconciler_handles_deleted_event() {
-    use graphswarm::indexer::{CallGraph, extractor::{CodeEntity, EntityType, Language}};
+    use graphswarm::indexer::{
+        extractor::{CodeEntity, EntityType, Language},
+        CallGraph,
+    };
 
-    let dir    = TempDir::new().unwrap();
-    let kv     = KvBackend::open(dir.path()).unwrap();
-    let store  = GraphStore::new(kv);
+    let dir = TempDir::new().unwrap();
+    let kv = KvBackend::open(dir.path()).unwrap();
+    let store = GraphStore::new(kv);
 
     // Create a minimal graph with one entity in src/auth.rs
     let entity = CodeEntity {
-        id: "src/auth.rs::foo".into(), name: "foo".into(),
-        entity_type: EntityType::Function, file_path: "src/auth.rs".into(),
-        line_start: 1, line_end: 5, language: Language::Rust,
-        docstring: None, calls: vec![], called_by: vec![],
+        id: "src/auth.rs::foo".into(),
+        name: "foo".into(),
+        entity_type: EntityType::Function,
+        file_path: "src/auth.rs".into(),
+        line_start: 1,
+        line_end: 5,
+        language: Language::Rust,
+        docstring: None,
+        calls: vec![],
+        called_by: vec![],
     };
     let mut graph = CallGraph::new();
     graph.set_repo_path(".".into());

@@ -41,10 +41,13 @@ pub fn name_score(entity_name: &str, query: &str) -> f64 {
 
     // Count how many query tokens appear anywhere in the entity name.
     // We check substring containment: "auth" matches "authenticate".
-    let matched = query_tokens.iter().filter(|qt| {
-        name_tokens.iter().any(|nt| nt.contains(qt.as_str()))
-            || name_lower.contains(qt.as_str())
-    }).count();
+    let matched = query_tokens
+        .iter()
+        .filter(|qt| {
+            name_tokens.iter().any(|nt| nt.contains(qt.as_str()))
+                || name_lower.contains(qt.as_str())
+        })
+        .count();
 
     matched as f64 / query_tokens.len() as f64
 }
@@ -122,7 +125,8 @@ pub fn docstring_score(docstring: Option<&str>, query: &str) -> f64 {
     }
 
     let doc_lower = doc.to_lowercase();
-    let matched = query_tokens.iter()
+    let matched = query_tokens
+        .iter()
         .filter(|qt| doc_lower.contains(qt.as_str()))
         .count();
 
@@ -273,9 +277,9 @@ mod tests {
     #[test]
     fn recency_score_strictly_decreasing() {
         let s0 = recency_score(Some(0.0));
-        let s1 = recency_score(Some(1800.0));  // 30 min
-        let s2 = recency_score(Some(3600.0));  // 1 hour
-        let s3 = recency_score(Some(7200.0));  // 2 hours
+        let s1 = recency_score(Some(1800.0)); // 30 min
+        let s2 = recency_score(Some(3600.0)); // 1 hour
+        let s3 = recency_score(Some(7200.0)); // 2 hours
         assert!(s0 > s1, "0s should beat 30min");
         assert!(s1 > s2, "30min should beat 1hr");
         assert!(s2 > s3, "1hr should beat 2hr");
@@ -349,6 +353,9 @@ mod tests {
         // Query token "a" is only 1 char → filtered → effectively empty query → 0.0
         let s = name_score("authenticate", "a");
         // "a" is filtered (len < 2) → query_tokens empty → 0.0
-        assert!((s - 0.0).abs() < f64::EPSILON, "single-char token must be filtered");
+        assert!(
+            (s - 0.0).abs() < f64::EPSILON,
+            "single-char token must be filtered"
+        );
     }
 }

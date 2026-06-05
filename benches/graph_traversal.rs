@@ -17,8 +17,8 @@ use tempfile::TempDir;
 /// Builds a 1 000-entity graph with branching factor ~5.
 /// Returns TempDir (keeps DB alive) + store + root entity id.
 fn setup_branching_graph() -> (TempDir, GraphStore, String) {
-    let dir  = TempDir::new().unwrap();
-    let kv   = KvBackend::open(dir.path()).unwrap();
+    let dir = TempDir::new().unwrap();
+    let kv = KvBackend::open(dir.path()).unwrap();
     let store = GraphStore::new(kv);
 
     let mut graph = CallGraph::new();
@@ -32,19 +32,23 @@ fn setup_branching_graph() -> (TempDir, GraphStore, String) {
         branching: usize,
         counter: &mut usize,
     ) -> String {
-        let id   = *counter;
+        let id = *counter;
         *counter += 1;
         let name = format!("func_{id}");
         let file = format!("src/mod_{}.rs", id % 20);
         let full_id = format!("{file}::{name}");
 
         graph.add_entity(CodeEntity {
-            id: full_id.clone(), name,
+            id: full_id.clone(),
+            name,
             entity_type: EntityType::Function,
             file_path: file,
-            line_start: 1, line_end: 5,
+            line_start: 1,
+            line_end: 5,
             language: Language::Rust,
-            docstring: None, calls: vec![], called_by: vec![],
+            docstring: None,
+            calls: vec![],
+            called_by: vec![],
         });
 
         if let Some(pid) = parent_id {
@@ -105,8 +109,8 @@ fn bench_find_callers(c: &mut Criterion) {
 
 fn bench_find_in_file(c: &mut Criterion) {
     // Build a graph where src/mod_0.rs has ~50 entities
-    let dir  = TempDir::new().unwrap();
-    let kv   = KvBackend::open(dir.path()).unwrap();
+    let dir = TempDir::new().unwrap();
+    let kv = KvBackend::open(dir.path()).unwrap();
     let store = GraphStore::new(kv);
 
     let mut graph = CallGraph::new();
@@ -118,9 +122,11 @@ fn bench_find_in_file(c: &mut Criterion) {
             entity_type: EntityType::Function,
             file_path: "src/mod_0.rs".into(),
             line_start: (i * 5 + 1) as u32,
-            line_end:   (i * 5 + 4) as u32,
+            line_end: (i * 5 + 4) as u32,
             language: Language::Rust,
-            docstring: None, calls: vec![], called_by: vec![],
+            docstring: None,
+            calls: vec![],
+            called_by: vec![],
         });
     }
     store.store_graph(&graph).unwrap();

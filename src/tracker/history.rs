@@ -235,22 +235,23 @@ mod tests {
             (t1, "file_a.rs", ActionType::FileRead, false),
             (t2, "file_b.rs", ActionType::FileRead, false),
             (t3, "file_a.rs", ActionType::FileEdit, false),
-            (t4, "file_c.rs", ActionType::Error,    true),
+            (t4, "file_c.rs", ActionType::Error, true),
             (t5, "file_a.rs", ActionType::FileRead, false),
         ];
 
         for (ts, file, atype, is_err) in specs {
             let action = AgentAction {
-                id:          Uuid::new_v4(),
+                id: Uuid::new_v4(),
                 action_type: atype,
-                file_path:   file.to_string(),
-                entity_id:   None,
-                timestamp:   ts,
-                metadata:    HashMap::new(),
+                file_path: file.to_string(),
+                entity_id: None,
+                timestamp: ts,
+                metadata: HashMap::new(),
             };
 
             // Full record under action:{uuid}
-            kv.set(&action_key(&action.id.to_string()), &action).unwrap();
+            kv.set(&action_key(&action.id.to_string()), &action)
+                .unwrap();
             // Recency index: value is the file path string
             kv.set(
                 &history_recent_key(&ts.to_rfc3339(), &action.id.to_string()),
@@ -269,9 +270,21 @@ mod tests {
 
         // Per-file frequency counters
         let counts = [
-            FileAccessCount { file_path: "file_a.rs".into(), count: 3, last_accessed: t5 },
-            FileAccessCount { file_path: "file_b.rs".into(), count: 1, last_accessed: t2 },
-            FileAccessCount { file_path: "file_c.rs".into(), count: 1, last_accessed: t4 },
+            FileAccessCount {
+                file_path: "file_a.rs".into(),
+                count: 3,
+                last_accessed: t5,
+            },
+            FileAccessCount {
+                file_path: "file_b.rs".into(),
+                count: 1,
+                last_accessed: t2,
+            },
+            FileAccessCount {
+                file_path: "file_c.rs".into(),
+                count: 1,
+                last_accessed: t4,
+            },
         ];
         for c in &counts {
             kv.set(&history_count_key(&c.file_path), c).unwrap();
@@ -385,14 +398,15 @@ mod tests {
 
         for (ts, file) in [(t1, "old_error.rs"), (t2, "new_error.rs")] {
             let action = AgentAction {
-                id:          Uuid::new_v4(),
+                id: Uuid::new_v4(),
                 action_type: ActionType::Error,
-                file_path:   file.to_string(),
-                entity_id:   None,
-                timestamp:   ts,
-                metadata:    HashMap::new(),
+                file_path: file.to_string(),
+                entity_id: None,
+                timestamp: ts,
+                metadata: HashMap::new(),
             };
-            kv.set(&action_key(&action.id.to_string()), &action).unwrap();
+            kv.set(&action_key(&action.id.to_string()), &action)
+                .unwrap();
             kv.set(
                 &history_error_key(&ts.to_rfc3339(), &action.id.to_string()),
                 &action,
@@ -412,14 +426,15 @@ mod tests {
         let kv = KvBackend::open(dir.path()).unwrap();
         // Write only a non-error action -no history:error: keys written
         let action = AgentAction {
-            id:          Uuid::new_v4(),
+            id: Uuid::new_v4(),
             action_type: ActionType::FileRead,
-            file_path:   "a.rs".into(),
-            entity_id:   None,
-            timestamp:   Utc::now(),
-            metadata:    HashMap::new(),
+            file_path: "a.rs".into(),
+            entity_id: None,
+            timestamp: Utc::now(),
+            metadata: HashMap::new(),
         };
-        kv.set(&action_key(&action.id.to_string()), &action).unwrap();
+        kv.set(&action_key(&action.id.to_string()), &action)
+            .unwrap();
         kv.set(
             &history_recent_key(&action.timestamp.to_rfc3339(), &action.id.to_string()),
             &action.file_path,
@@ -452,12 +467,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let kv = KvBackend::open(dir.path()).unwrap();
         let action = AgentAction {
-            id:          Uuid::new_v4(),
+            id: Uuid::new_v4(),
             action_type: ActionType::FileRead,
-            file_path:   "src/auth.rs".into(),
-            entity_id:   Some("src/auth.rs::login".into()),
-            timestamp:   Utc::now(),
-            metadata:    HashMap::new(),
+            file_path: "src/auth.rs".into(),
+            entity_id: Some("src/auth.rs::login".into()),
+            timestamp: Utc::now(),
+            metadata: HashMap::new(),
         };
         let action_id = action.id.to_string();
         kv.set(&action_key(&action_id), &action).unwrap();
@@ -483,7 +498,10 @@ mod tests {
     #[test]
     fn file_last_accessed_returns_none_for_unaccessed_file() {
         let (history, _dir) = seeded_history();
-        assert!(history.file_last_accessed("never_touched.rs").unwrap().is_none());
+        assert!(history
+            .file_last_accessed("never_touched.rs")
+            .unwrap()
+            .is_none());
     }
 
     #[test]

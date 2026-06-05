@@ -22,22 +22,26 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use tokio::sync::mpsc::Receiver;
 
+use super::{EventKind, FileEvent};
 use crate::error::Result;
 use crate::indexer::CodeIndexer;
 use crate::storage::GraphStore;
-use super::{EventKind, FileEvent};
 
 /// Consumes `FileEvent`s and incrementally updates the `GraphStore`.
 pub struct Reconciler {
-    rx:        Receiver<FileEvent>,
-    store:     GraphStore,
+    rx: Receiver<FileEvent>,
+    store: GraphStore,
     /// Reserved for Phase 7 cross-file edge resolution after incremental re-index.
     _repo_root: PathBuf,
 }
 
 impl Reconciler {
     pub fn new(rx: Receiver<FileEvent>, store: GraphStore, repo_root: PathBuf) -> Self {
-        Self { rx, store, _repo_root: repo_root }
+        Self {
+            rx,
+            store,
+            _repo_root: repo_root,
+        }
     }
 
     /// Runs the reconcile loop until the channel closes.
@@ -53,8 +57,8 @@ impl Reconciler {
             let result = match event.kind {
                 // The watcher infers Created as Modified (both mean "file exists now").
                 EventKind::Created | EventKind::Modified => self.reconcile_modified(&event.path),
-                EventKind::Deleted  => self.reconcile_deleted(&event.path),
-                EventKind::Renamed  => self.reconcile_modified(&event.path),
+                EventKind::Deleted => self.reconcile_deleted(&event.path),
+                EventKind::Renamed => self.reconcile_modified(&event.path),
             };
 
             if let Err(e) = result {
@@ -89,7 +93,9 @@ impl Reconciler {
 
         let indexer = CodeIndexer::new("auto")?;
         let content = std::fs::read_to_string(path)?;
-        let entities = indexer.parser_ref().parse_source(&path_str, &content)
+        let entities = indexer
+            .parser_ref()
+            .parse_source(&path_str, &content)
             .unwrap_or_default();
 
         // Step 4: store the new entities.
@@ -100,7 +106,11 @@ impl Reconciler {
         // Step 5: clear stale now that re-index succeeded.
         self.store.clear_stale(&path_str)?;
 
-        eprintln!("[graphswarm reconciler] reconciled {} ({} entities)", path_str, entities.len());
+        eprintln!(
+            "[graphswarm reconciler] reconciled {} ({} entities)",
+            path_str,
+            entities.len()
+        );
         Ok(())
     }
 

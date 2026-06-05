@@ -12,10 +12,10 @@
 //! Handlers NEVER panic. They return `Err` on bad input.
 //! The server converts `Err` into a proper `McpErrorResponse`.
 
-use serde_json::Value;
 use crate::error::Result;
 use crate::mcp::protocol::{ContentBlock, ToolDefinition};
 use crate::query::QueryEngine;
+use serde_json::Value;
 
 /// Shared state passed to every tool handler.
 ///
@@ -33,7 +33,8 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
             name: "query_graph".into(),
             description: "Find the most relevant files for a natural language query. \
                 Uses name matching, call graph distance, recency, and docstring signals. \
-                Returns files ranked by relevance score with explanations.".into(),
+                Returns files ranked by relevance score with explanations."
+                .into(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -53,7 +54,8 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "get_callers".into(),
             description: "Find all entities (functions/methods) that directly call \
-                the specified entity. Returns entity ids, names, and file locations.".into(),
+                the specified entity. Returns entity ids, names, and file locations."
+                .into(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -69,7 +71,8 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "get_callees".into(),
             description: "Find all entities that the specified entity directly calls. \
-                Returns the call dependencies of a function or method.".into(),
+                Returns the call dependencies of a function or method."
+                .into(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -85,7 +88,8 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
             name: "shortest_path".into(),
             description: "Find the shortest call path between two entities. \
                 Returns the chain of function calls connecting 'from' to 'to'. \
-                Empty result means no path exists within 5 hops.".into(),
+                Empty result means no path exists within 5 hops."
+                .into(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -99,7 +103,8 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
             name: "explain_entity".into(),
             description: "Get full details about a specific code entity: \
                 type, file path, line numbers, docstring, what it calls, \
-                and what calls it.".into(),
+                and what calls it."
+                .into(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -123,10 +128,10 @@ pub fn dispatch(
     state: &GraphSwarmState,
 ) -> Result<Vec<ContentBlock>> {
     match tool_name {
-        "query_graph"    => handle_query_graph(args, state),
-        "get_callers"    => handle_get_callers(args, state),
-        "get_callees"    => handle_get_callees(args, state),
-        "shortest_path"  => handle_shortest_path(args, state),
+        "query_graph" => handle_query_graph(args, state),
+        "get_callers" => handle_get_callers(args, state),
+        "get_callees" => handle_get_callees(args, state),
+        "shortest_path" => handle_shortest_path(args, state),
         "explain_entity" => handle_explain_entity(args, state),
         unknown => Err(crate::error::Error::query(format!(
             "Unknown tool: '{unknown}'. Available: query_graph, get_callers, \
@@ -154,15 +159,24 @@ fn handle_query_graph(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
         ))]);
     }
 
-    let mut lines = vec![format!("Query: \"{query}\" -top {} result(s)\n", results.len())];
+    let mut lines = vec![format!(
+        "Query: \"{query}\" -top {} result(s)\n",
+        results.len()
+    )];
 
     for (i, r) in results.iter().enumerate() {
-        let stale = r.stale_warning.as_deref()
+        let stale = r
+            .stale_warning
+            .as_deref()
             .map(|w| format!("\n   ⚠ {w}"))
             .unwrap_or_default();
         lines.push(format!(
             "{}. {} (score: {:.3})\n   Reason: {}{}\n   Entities:",
-            i + 1, r.file_path, r.relevance_score, r.reason, stale
+            i + 1,
+            r.file_path,
+            r.relevance_score,
+            r.reason,
+            stale
         ));
         for entity in &r.entities {
             lines.push(format!(
@@ -171,7 +185,9 @@ fn handle_query_graph(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
                 entity.entity_type,
                 entity.line_start,
                 entity.line_end,
-                entity.docstring.as_ref()
+                entity
+                    .docstring
+                    .as_ref()
                     .map(|d| format!("\n     \"{d}\""))
                     .unwrap_or_default()
             ));
@@ -198,7 +214,10 @@ fn handle_get_callers(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
 
     let mut lines = vec![format!("Callers of {entity_id}:\n")];
     for c in &callers {
-        lines.push(format!("- {} ({}:{}–{})", c.id, c.file_path, c.line_start, c.line_end));
+        lines.push(format!(
+            "- {} ({}:{}–{})",
+            c.id, c.file_path, c.line_start, c.line_end
+        ));
     }
     lines.push(format!("\nTotal: {} caller(s)", callers.len()));
 
@@ -221,7 +240,10 @@ fn handle_get_callees(args: &Value, state: &GraphSwarmState) -> Result<Vec<Conte
 
     let mut lines = vec![format!("Callees of {entity_id}:\n")];
     for c in &callees {
-        lines.push(format!("- {} ({}:{}–{})", c.id, c.file_path, c.line_start, c.line_end));
+        lines.push(format!(
+            "- {} ({}:{}–{})",
+            c.id, c.file_path, c.line_start, c.line_end
+        ));
     }
     lines.push(format!("\nTotal: {} callee(s)", callees.len()));
 
@@ -247,7 +269,9 @@ fn handle_shortest_path(args: &Value, state: &GraphSwarmState) -> Result<Vec<Con
 
     let mut lines = vec![format!(
         "Shortest call path: {} → {} ({} hops)\n",
-        from, to, path.len() - 1
+        from,
+        to,
+        path.len() - 1
     )];
     for (i, node) in path.iter().enumerate() {
         let arrow = if i + 1 < path.len() { " →" } else { "" };
@@ -272,7 +296,10 @@ fn handle_explain_entity(args: &Value, state: &GraphSwarmState) -> Result<Vec<Co
                 format!("Entity: {}", e.id),
                 format!("Name:   {}", e.name),
                 format!("Type:   {}", e.entity_type),
-                format!("File:   {} (lines {}–{})", e.file_path, e.line_start, e.line_end),
+                format!(
+                    "File:   {} (lines {}–{})",
+                    e.file_path, e.line_start, e.line_end
+                ),
                 format!("Language: {}", e.language),
             ];
             if let Some(doc) = &e.docstring {
@@ -280,11 +307,15 @@ fn handle_explain_entity(args: &Value, state: &GraphSwarmState) -> Result<Vec<Co
             }
             if !e.calls.is_empty() {
                 lines.push(format!("\nCalls ({}):", e.calls.len()));
-                for c in &e.calls { lines.push(format!("  - {c}")); }
+                for c in &e.calls {
+                    lines.push(format!("  - {c}"));
+                }
             }
             if !e.called_by.is_empty() {
                 lines.push(format!("\nCalled by ({}):", e.called_by.len()));
-                for c in &e.called_by { lines.push(format!("  - {c}")); }
+                for c in &e.called_by {
+                    lines.push(format!("  - {c}"));
+                }
             }
             Ok(vec![ContentBlock::text(lines.join("\n"))])
         }
@@ -305,38 +336,60 @@ mod tests {
 
     fn make_test_graph() -> CallGraph {
         let main_e = CodeEntity {
-            id: "src/main.rs::main".into(), name: "main".into(),
-            entity_type: EntityType::Function, file_path: "src/main.rs".into(),
-            line_start: 1, line_end: 10, language: Language::Rust,
+            id: "src/main.rs::main".into(),
+            name: "main".into(),
+            entity_type: EntityType::Function,
+            file_path: "src/main.rs".into(),
+            line_start: 1,
+            line_end: 10,
+            language: Language::Rust,
             docstring: Some("Entry point".into()),
-            calls: vec!["src/auth.rs::authenticate_user".into()], called_by: vec![],
+            calls: vec!["src/auth.rs::authenticate_user".into()],
+            called_by: vec![],
         };
         let auth_e = CodeEntity {
-            id: "src/auth.rs::authenticate_user".into(), name: "authenticate_user".into(),
-            entity_type: EntityType::Function, file_path: "src/auth.rs".into(),
-            line_start: 5, line_end: 25, language: Language::Rust,
+            id: "src/auth.rs::authenticate_user".into(),
+            name: "authenticate_user".into(),
+            entity_type: EntityType::Function,
+            file_path: "src/auth.rs".into(),
+            line_start: 5,
+            line_end: 25,
+            language: Language::Rust,
             docstring: Some("Authenticates a user by JWT".into()),
             calls: vec!["src/auth.rs::verify_token".into()],
             called_by: vec!["src/main.rs::main".into()],
         };
         let verify_e = CodeEntity {
-            id: "src/auth.rs::verify_token".into(), name: "verify_token".into(),
-            entity_type: EntityType::Function, file_path: "src/auth.rs".into(),
-            line_start: 30, line_end: 45, language: Language::Rust,
-            docstring: None, calls: vec![],
+            id: "src/auth.rs::verify_token".into(),
+            name: "verify_token".into(),
+            entity_type: EntityType::Function,
+            file_path: "src/auth.rs".into(),
+            line_start: 30,
+            line_end: 45,
+            language: Language::Rust,
+            docstring: None,
+            calls: vec![],
             called_by: vec!["src/auth.rs::authenticate_user".into()],
         };
         let mut g = CallGraph::new();
         g.set_repo_path("./test_repo".into());
-        g.add_entity(main_e); g.add_entity(auth_e); g.add_entity(verify_e);
-        g.add_call("src/main.rs::main".into(), "src/auth.rs::authenticate_user".into());
-        g.add_call("src/auth.rs::authenticate_user".into(), "src/auth.rs::verify_token".into());
+        g.add_entity(main_e);
+        g.add_entity(auth_e);
+        g.add_entity(verify_e);
+        g.add_call(
+            "src/main.rs::main".into(),
+            "src/auth.rs::authenticate_user".into(),
+        );
+        g.add_call(
+            "src/auth.rs::authenticate_user".into(),
+            "src/auth.rs::verify_token".into(),
+        );
         g
     }
 
     fn make_test_state() -> (GraphSwarmState, TempDir) {
         let dir = TempDir::new().unwrap();
-        let kv  = KvBackend::open(dir.path()).unwrap();
+        let kv = KvBackend::open(dir.path()).unwrap();
         let store = GraphStore::new(kv.clone());
         store.store_graph(&make_test_graph()).unwrap();
         let engine = QueryEngine::new(store, History::new(kv));
@@ -364,15 +417,22 @@ mod tests {
     #[test]
     fn all_tools_have_non_empty_description() {
         for t in tool_definitions() {
-            assert!(!t.description.is_empty(), "{} has empty description", t.name);
+            assert!(
+                !t.description.is_empty(),
+                "{} has empty description",
+                t.name
+            );
         }
     }
 
     #[test]
     fn all_tools_have_valid_input_schema() {
         for t in tool_definitions() {
-            assert_eq!(t.input_schema["type"], "object",
-                "{} input_schema must have type:object", t.name);
+            assert_eq!(
+                t.input_schema["type"], "object",
+                "{} input_schema must have type:object",
+                t.name
+            );
         }
     }
 

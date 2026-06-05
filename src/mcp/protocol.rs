@@ -131,12 +131,19 @@ impl McpErrorResponse {
         Self {
             jsonrpc: "2.0".into(),
             id,
-            error: McpError { code, message: message.into() },
+            error: McpError {
+                code,
+                message: message.into(),
+            },
         }
     }
 
     pub fn method_not_found(id: Option<Value>, method: &str) -> Self {
-        Self::new(id, error_codes::METHOD_NOT_FOUND, format!("Method not found: {method}"))
+        Self::new(
+            id,
+            error_codes::METHOD_NOT_FOUND,
+            format!("Method not found: {method}"),
+        )
     }
 
     pub fn invalid_params(id: Option<Value>, detail: impl Into<String>) -> Self {
@@ -158,7 +165,10 @@ impl McpErrorResponse {
 
 impl ContentBlock {
     pub fn text(text: impl Into<String>) -> Self {
-        Self { content_type: "text".into(), text: text.into() }
+        Self {
+            content_type: "text".into(),
+            text: text.into(),
+        }
     }
 }
 

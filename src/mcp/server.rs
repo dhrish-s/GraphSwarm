@@ -24,14 +24,14 @@
 //! a Tokio runtime -the server itself uses blocking stdio I/O, which
 //! is correct because MCP clients send one request at a time.
 
-use std::io::{self, BufRead, Write};
-use std::path::PathBuf;
 use crate::error::Result;
-use crate::mcp::protocol::{McpRequest, McpResponse, McpErrorResponse};
+use crate::mcp::protocol::{McpErrorResponse, McpRequest, McpResponse};
 use crate::mcp::tools::{dispatch, tool_definitions, GraphSwarmState};
 use crate::query::QueryEngine;
 use crate::storage::{GraphStore, KvBackend};
 use crate::tracker::History;
+use std::io::{self, BufRead, Write};
+use std::path::PathBuf;
 
 /// MCP stdio server.
 ///
@@ -47,7 +47,10 @@ pub struct McpServer {
 impl McpServer {
     /// Creates a new McpServer that will load the graph from `db_path`.
     pub fn new(db_path: impl Into<PathBuf>) -> Self {
-        Self { db_path: db_path.into(), port: 3000 }
+        Self {
+            db_path: db_path.into(),
+            port: 3000,
+        }
     }
 
     /// Runs the MCP stdio server until stdin closes.
@@ -56,7 +59,7 @@ impl McpServer {
     pub fn run(&self) -> Result<()> {
         let state = self.open_state();
 
-        let stdin  = io::stdin();
+        let stdin = io::stdin();
         let stdout = io::stdout();
         let mut out = stdout.lock();
 
@@ -74,8 +77,11 @@ impl McpServer {
 
             let response_json = match serde_json::from_str::<McpRequest>(trimmed) {
                 Err(e) => serde_json::to_string(&McpErrorResponse::new(
-                    None, -32700, format!("Parse error: {e}")
-                )).unwrap_or_default(),
+                    None,
+                    -32700,
+                    format!("Parse error: {e}"),
+                ))
+                .unwrap_or_default(),
                 Ok(req) => {
                     // Notifications (no id) don't require a response in JSON-RPC 2.0.
                     // We still produce one here because some MCP hosts expect it;
@@ -85,8 +91,12 @@ impl McpServer {
                 }
             };
 
-            if writeln!(out, "{response_json}").is_err() { break; }
-            if out.flush().is_err() { break; }
+            if writeln!(out, "{response_json}").is_err() {
+                break;
+            }
+            if out.flush().is_err() {
+                break;
+            }
         }
 
         eprintln!("[graphswarm] MCP server stopped");
@@ -106,58 +116,64 @@ impl McpServer {
 
             // ── Notification: client acknowledges init ─────────────────────────
             // JSON-RPC notifications have no id -clients ignore our reply.
-            "notifications/initialized" => {
-                serde_json::to_value(McpResponse::empty(None)).unwrap()
-            }
+            "notifications/initialized" => serde_json::to_value(McpResponse::empty(None)).unwrap(),
 
             // ── Tool discovery ─────────────────────────────────────────────────
             "tools/list" => {
-                serde_json::to_value(
-                    McpResponse::tools_list(req.id, tool_definitions())
-                ).unwrap()
+                serde_json::to_value(McpResponse::tools_list(req.id, tool_definitions())).unwrap()
             }
 
             // ── Tool execution ─────────────────────────────────────────────────
             "tools/call" => {
                 let params = match req.params.as_ref() {
                     Some(p) => p,
-                    None => return serde_json::to_value(
-                        McpErrorResponse::invalid_params(req.id, "Missing params")
-                    ).unwrap(),
+                    None => {
+                        return serde_json::to_value(McpErrorResponse::invalid_params(
+                            req.id,
+                            "Missing params",
+                        ))
+                        .unwrap()
+                    }
                 };
 
                 let tool_name = match params["name"].as_str() {
                     Some(n) => n,
-                    None => return serde_json::to_value(
-                        McpErrorResponse::invalid_params(req.id, "Missing tool name")
-                    ).unwrap(),
+                    None => {
+                        return serde_json::to_value(McpErrorResponse::invalid_params(
+                            req.id,
+                            "Missing tool name",
+                        ))
+                        .unwrap()
+                    }
                 };
 
-                let args = params.get("arguments")
+                let args = params
+                    .get("arguments")
                     .cloned()
                     .unwrap_or(serde_json::json!({}));
 
                 let state = match state {
                     Some(s) => s,
-                    None => return serde_json::to_value(
-                        McpErrorResponse::not_indexed(req.id)
-                    ).unwrap(),
+                    None => {
+                        return serde_json::to_value(McpErrorResponse::not_indexed(req.id)).unwrap()
+                    }
                 };
 
                 match dispatch(tool_name, &args, state) {
-                    Ok(content) => serde_json::to_value(
-                        McpResponse::tool_result(req.id, content)
-                    ).unwrap(),
-                    Err(e) => serde_json::to_value(
-                        McpErrorResponse::internal(req.id, e.to_string())
-                    ).unwrap(),
+                    Ok(content) => {
+                        serde_json::to_value(McpResponse::tool_result(req.id, content)).unwrap()
+                    }
+                    Err(e) => {
+                        serde_json::to_value(McpErrorResponse::internal(req.id, e.to_string()))
+                            .unwrap()
+                    }
                 }
             }
 
             // ── Unknown method ─────────────────────────────────────────────────
-            method => serde_json::to_value(
-                McpErrorResponse::method_not_found(req.id, method)
-            ).unwrap(),
+            method => {
+                serde_json::to_value(McpErrorResponse::method_not_found(req.id, method)).unwrap()
+            }
         }
     }
 
@@ -181,7 +197,9 @@ impl McpServer {
         Some(GraphSwarmState { engine })
     }
 
-    pub fn port(&self) -> u16 { self.port }
+    pub fn port(&self) -> u16 {
+        self.port
+    }
 }
 
 // Helper: build a minimal McpRequest for tests without going through serde.
@@ -213,27 +231,43 @@ mod tests {
 
     fn make_test_graph() -> CallGraph {
         let main_e = CodeEntity {
-            id: "src/main.rs::main".into(), name: "main".into(),
-            entity_type: EntityType::Function, file_path: "src/main.rs".into(),
-            line_start: 1, line_end: 10, language: Language::Rust,
-            docstring: None, calls: vec!["src/auth.rs::authenticate_user".into()], called_by: vec![],
+            id: "src/main.rs::main".into(),
+            name: "main".into(),
+            entity_type: EntityType::Function,
+            file_path: "src/main.rs".into(),
+            line_start: 1,
+            line_end: 10,
+            language: Language::Rust,
+            docstring: None,
+            calls: vec!["src/auth.rs::authenticate_user".into()],
+            called_by: vec![],
         };
         let auth_e = CodeEntity {
-            id: "src/auth.rs::authenticate_user".into(), name: "authenticate_user".into(),
-            entity_type: EntityType::Function, file_path: "src/auth.rs".into(),
-            line_start: 5, line_end: 25, language: Language::Rust,
-            docstring: None, calls: vec![], called_by: vec!["src/main.rs::main".into()],
+            id: "src/auth.rs::authenticate_user".into(),
+            name: "authenticate_user".into(),
+            entity_type: EntityType::Function,
+            file_path: "src/auth.rs".into(),
+            line_start: 5,
+            line_end: 25,
+            language: Language::Rust,
+            docstring: None,
+            calls: vec![],
+            called_by: vec!["src/main.rs::main".into()],
         };
         let mut g = CallGraph::new();
         g.set_repo_path("./test".into());
-        g.add_entity(main_e); g.add_entity(auth_e);
-        g.add_call("src/main.rs::main".into(), "src/auth.rs::authenticate_user".into());
+        g.add_entity(main_e);
+        g.add_entity(auth_e);
+        g.add_call(
+            "src/main.rs::main".into(),
+            "src/auth.rs::authenticate_user".into(),
+        );
         g
     }
 
     fn make_state_with_graph(dir: &TempDir) -> GraphSwarmState {
         let db_path = dir.path().join(".graphswarm_db");
-        let kv    = KvBackend::open(&db_path).unwrap();
+        let kv = KvBackend::open(&db_path).unwrap();
         let store = GraphStore::new(kv.clone());
         store.store_graph(&make_test_graph()).unwrap();
         let engine = QueryEngine::new(store, History::new(kv));
@@ -282,10 +316,14 @@ mod tests {
     #[test]
     fn tools_call_with_no_state_returns_32000() {
         let (server, _dir) = temp_server();
-        let req = make_req(serde_json::json!(1), "tools/call", Some(serde_json::json!({
-            "name": "query_graph",
-            "arguments": {"query": "auth"}
-        })));
+        let req = make_req(
+            serde_json::json!(1),
+            "tools/call",
+            Some(serde_json::json!({
+                "name": "query_graph",
+                "arguments": {"query": "auth"}
+            })),
+        );
         let v = server.handle_request(req, None);
         assert_eq!(v["error"]["code"], -32000);
     }
@@ -303,20 +341,29 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let server = McpServer::new(dir.path().join(".graphswarm_db"));
         let state = make_state_with_graph(&dir);
-        let req = make_req(serde_json::json!(1), "tools/call", Some(serde_json::json!({
-            "name": "no_such_tool",
-            "arguments": {}
-        })));
+        let req = make_req(
+            serde_json::json!(1),
+            "tools/call",
+            Some(serde_json::json!({
+                "name": "no_such_tool",
+                "arguments": {}
+            })),
+        );
         let v = server.handle_request(req, Some(&state));
-        assert!(v.get("error").is_some(), "unknown tool must produce an error response");
+        assert!(
+            v.get("error").is_some(),
+            "unknown tool must produce an error response"
+        );
     }
 
     #[test]
     fn notifications_initialized_returns_empty_result() {
         let (server, _dir) = temp_server();
         let req = McpRequest {
-            jsonrpc: "2.0".into(), id: None,
-            method: "notifications/initialized".into(), params: None,
+            jsonrpc: "2.0".into(),
+            id: None,
+            method: "notifications/initialized".into(),
+            params: None,
         };
         let v = server.handle_request(req, None);
         // No error; result is the empty object
@@ -338,12 +385,19 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let server = McpServer::new(dir.path().join(".graphswarm_db"));
         let state = make_state_with_graph(&dir);
-        let req = make_req(serde_json::json!(1), "tools/call", Some(serde_json::json!({
-            "name": "query_graph",
-            "arguments": {"query": "authenticate", "top_k": 3}
-        })));
+        let req = make_req(
+            serde_json::json!(1),
+            "tools/call",
+            Some(serde_json::json!({
+                "name": "query_graph",
+                "arguments": {"query": "authenticate", "top_k": 3}
+            })),
+        );
         let v = server.handle_request(req, Some(&state));
         // Should have result, not error
-        assert!(v.get("result").is_some(), "valid query must return a result");
+        assert!(
+            v.get("result").is_some(),
+            "valid query must return a result"
+        );
     }
 }

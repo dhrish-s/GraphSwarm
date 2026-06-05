@@ -17,11 +17,12 @@ fn generate_rust_files(dir: &TempDir, n: usize) {
         let mut f = std::fs::File::create(&path).unwrap();
         for j in 0..10usize {
             // Each function calls the next one (circular except last)
-            let calls = if j + 1 < 10 { format!("    func_{i}_{};", j + 1) } else { String::new() };
-            writeln!(
-                f,
-                "fn func_{i}_{j}() {{\n{calls}\n}}"
-            ).unwrap();
+            let calls = if j + 1 < 10 {
+                format!("    func_{i}_{};", j + 1)
+            } else {
+                String::new()
+            };
+            writeln!(f, "fn func_{i}_{j}() {{\n{calls}\n}}").unwrap();
         }
     }
 }

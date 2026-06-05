@@ -1,8 +1,8 @@
-use clap::Args;
 use crate::error::{Error, Result};
 use crate::query::QueryEngine;
 use crate::storage::{GraphStore, KvBackend};
 use crate::tracker::History;
+use clap::Args;
 
 #[derive(Args)]
 pub struct QueryCommand {
@@ -40,7 +40,7 @@ impl QueryCommand {
                 p
             }
         };
-        let kv    = KvBackend::open(&db_path)?;
+        let kv = KvBackend::open(&db_path)?;
         let store = GraphStore::new(kv.clone());
         let history = History::new(kv);
 
@@ -53,21 +53,22 @@ impl QueryCommand {
 
         match tokens.as_slice() {
             // ── Structured graph queries ──────────────────────────────────────
-            ["callers", entity_id]  => self.print_callers(entity_id, &store),
-            ["callees", entity_id]  => self.print_callees(entity_id, &store),
-            ["file", file_path]     => self.print_file_entities(file_path, &store),
-            ["entity", name]        => self.print_entity_by_name(name, &store),
-            ["bfs",  entity_id]     => self.print_bfs(entity_id, 3, &store),
-            ["bfs",  entity_id, depth]
-                => self.print_bfs(entity_id, Self::parse_depth(depth)?, &store),
-            ["reverse_bfs", entity_id]
-                => self.print_reverse_bfs(entity_id, 3, &store),
-            ["reverse_bfs", entity_id, depth]
-                => self.print_reverse_bfs(entity_id, Self::parse_depth(depth)?, &store),
-            ["dependency_chain", entity_id]
-                => self.print_dependency_chain(entity_id, 3, &store),
-            ["dependency_chain", entity_id, depth]
-                => self.print_dependency_chain(entity_id, Self::parse_depth(depth)?, &store),
+            ["callers", entity_id] => self.print_callers(entity_id, &store),
+            ["callees", entity_id] => self.print_callees(entity_id, &store),
+            ["file", file_path] => self.print_file_entities(file_path, &store),
+            ["entity", name] => self.print_entity_by_name(name, &store),
+            ["bfs", entity_id] => self.print_bfs(entity_id, 3, &store),
+            ["bfs", entity_id, depth] => {
+                self.print_bfs(entity_id, Self::parse_depth(depth)?, &store)
+            }
+            ["reverse_bfs", entity_id] => self.print_reverse_bfs(entity_id, 3, &store),
+            ["reverse_bfs", entity_id, depth] => {
+                self.print_reverse_bfs(entity_id, Self::parse_depth(depth)?, &store)
+            }
+            ["dependency_chain", entity_id] => self.print_dependency_chain(entity_id, 3, &store),
+            ["dependency_chain", entity_id, depth] => {
+                self.print_dependency_chain(entity_id, Self::parse_depth(depth)?, &store)
+            }
 
             // ── Natural language query via QueryEngine ────────────────────────
             _ => {
@@ -97,7 +98,10 @@ impl QueryCommand {
 
     fn parse_depth(depth: &str) -> Result<usize> {
         depth.parse::<usize>().map_err(|_| {
-            Error::query(format!("Invalid depth '{}'. Must be a positive integer.", depth))
+            Error::query(format!(
+                "Invalid depth '{}'. Must be a positive integer.",
+                depth
+            ))
         })
     }
 
@@ -121,8 +125,11 @@ impl QueryCommand {
         if store.entity_by_id(entity_id)?.is_none() {
             return Err(Error::not_found(format!("Entity not found: {}", entity_id)));
         }
-        let callers: Vec<String> = store.find_callers(entity_id)?
-            .into_iter().map(|e| e.id).collect();
+        let callers: Vec<String> = store
+            .find_callers(entity_id)?
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
         self.print_entity_header(entity_id);
         self.print_list("Callers", &callers);
         Ok(())
@@ -132,16 +139,22 @@ impl QueryCommand {
         if store.entity_by_id(entity_id)?.is_none() {
             return Err(Error::not_found(format!("Entity not found: {}", entity_id)));
         }
-        let callees: Vec<String> = store.find_callees(entity_id)?
-            .into_iter().map(|e| e.id).collect();
+        let callees: Vec<String> = store
+            .find_callees(entity_id)?
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
         self.print_entity_header(entity_id);
         self.print_list("Callees", &callees);
         Ok(())
     }
 
     fn print_file_entities(&self, file_path: &str, store: &GraphStore) -> Result<()> {
-        let entities: Vec<String> = store.find_in_file(file_path)?
-            .into_iter().map(|e| e.id).collect();
+        let entities: Vec<String> = store
+            .find_in_file(file_path)?
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
         println!("File path: {}\n", file_path);
         self.print_list("Entities", &entities);
         Ok(())
@@ -156,21 +169,40 @@ impl QueryCommand {
 
     fn print_bfs(&self, entity_id: &str, max_depth: usize, store: &GraphStore) -> Result<()> {
         let visited = store.bfs(entity_id, max_depth)?;
-        println!("BFS starting from {} (max depth {})\n", entity_id, max_depth);
+        println!(
+            "BFS starting from {} (max depth {})\n",
+            entity_id, max_depth
+        );
         self.print_list("Reachable entities", &visited);
         Ok(())
     }
 
-    fn print_reverse_bfs(&self, entity_id: &str, max_depth: usize, store: &GraphStore) -> Result<()> {
+    fn print_reverse_bfs(
+        &self,
+        entity_id: &str,
+        max_depth: usize,
+        store: &GraphStore,
+    ) -> Result<()> {
         let visited = store.reverse_bfs(entity_id, max_depth)?;
-        println!("Reverse BFS starting from {} (max depth {})\n", entity_id, max_depth);
+        println!(
+            "Reverse BFS starting from {} (max depth {})\n",
+            entity_id, max_depth
+        );
         self.print_list("Caller graph", &visited);
         Ok(())
     }
 
-    fn print_dependency_chain(&self, entity_id: &str, max_depth: usize, store: &GraphStore) -> Result<()> {
+    fn print_dependency_chain(
+        &self,
+        entity_id: &str,
+        max_depth: usize,
+        store: &GraphStore,
+    ) -> Result<()> {
         let chain = store.dependency_chain(entity_id, max_depth)?;
-        println!("Dependency chain from {} (max depth {})\n", entity_id, max_depth);
+        println!(
+            "Dependency chain from {} (max depth {})\n",
+            entity_id, max_depth
+        );
         self.print_list("Dependent entities", &chain);
         Ok(())
     }

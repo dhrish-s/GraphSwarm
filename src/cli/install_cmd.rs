@@ -9,8 +9,8 @@
 //!   Cursor       → <base>/.cursor/rules/graphswarm.mdc
 //!   Codex        → <base>/AGENTS.md (appended, idempotent)
 
-use clap::Args;
 use crate::error::Result;
+use clap::Args;
 use std::path::{Path, PathBuf};
 
 #[derive(Args)]
@@ -30,8 +30,8 @@ impl InstallCommand {
 
         match self.platform.as_str() {
             "claude" | "claude-code" => self.install_claude(&base)?,
-            "cursor"                 => self.install_cursor(&base)?,
-            "codex"                  => self.install_codex(&base)?,
+            "cursor" => self.install_cursor(&base)?,
+            "codex" => self.install_codex(&base)?,
             "all" => {
                 self.install_claude(&base)?;
                 self.install_cursor(&base)?;
@@ -47,7 +47,10 @@ impl InstallCommand {
         if self.project.is_some() {
             println!("\nInstalled to project: {}", base.display());
         } else {
-            println!("\nInstalled to home: {}/.claude/skills/graphswarm/", base.display());
+            println!(
+                "\nInstalled to home: {}/.claude/skills/graphswarm/",
+                base.display()
+            );
         }
         println!("Start the MCP server with: graphswarm server");
         Ok(())
@@ -62,16 +65,19 @@ impl InstallCommand {
             let path = PathBuf::from(p);
             std::fs::create_dir_all(&path).map_err(|e| {
                 crate::error::Error::storage(format!(
-                    "Cannot create project dir '{}': {e}", path.display()
+                    "Cannot create project dir '{}': {e}",
+                    path.display()
                 ))
             })?;
             Ok(path)
         } else {
             let home = std::env::var("USERPROFILE")
                 .or_else(|_| std::env::var("HOME"))
-                .map_err(|_| crate::error::Error::config(
-                    "Cannot find home directory. Set the HOME or USERPROFILE env var."
-                ))?;
+                .map_err(|_| {
+                    crate::error::Error::config(
+                        "Cannot find home directory. Set the HOME or USERPROFILE env var.",
+                    )
+                })?;
             Ok(PathBuf::from(home))
         }
     }
@@ -82,9 +88,8 @@ impl InstallCommand {
             crate::error::Error::storage(format!("Cannot create dir '{}': {e}", dir.display()))
         })?;
         let path = dir.join("SKILL.md");
-        std::fs::write(&path, self.claude_skill_content()).map_err(|e| {
-            crate::error::Error::storage(format!("Cannot write SKILL.md: {e}"))
-        })?;
+        std::fs::write(&path, self.claude_skill_content())
+            .map_err(|e| crate::error::Error::storage(format!("Cannot write SKILL.md: {e}")))?;
         println!("  Claude Code: {}", path.display());
         Ok(())
     }
@@ -153,7 +158,8 @@ get_callers: "src/auth.rs::verify_token"
 shortest_path from "src/main.rs::main" to "src/db.rs::query"
 explain_entity: "src/auth.rs::authenticate_user"
 ```
-"#.into()
+"#
+        .into()
     }
 
     fn cursor_rules_content(&self) -> String {
@@ -187,7 +193,8 @@ graphswarm server
 ```bash
 graphswarm index ./
 ```
-"#.into()
+"#
+        .into()
     }
 
     fn codex_agents_content(&self) -> String {
@@ -215,7 +222,8 @@ graphswarm query bfs src/main.rs::main 3
 ```bash
 graphswarm index ./
 ```
-"#.into()
+"#
+        .into()
     }
 }
 
@@ -229,7 +237,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let cmd = InstallCommand {
             platform: "claude".into(),
-            project:  Some(dir.path().to_str().unwrap().to_string()),
+            project: Some(dir.path().to_str().unwrap().to_string()),
         };
         cmd.execute().await.unwrap();
         let path = dir.path().join(".claude/skills/graphswarm/SKILL.md");
@@ -243,7 +251,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let cmd = InstallCommand {
             platform: "cursor".into(),
-            project:  Some(dir.path().to_str().unwrap().to_string()),
+            project: Some(dir.path().to_str().unwrap().to_string()),
         };
         cmd.execute().await.unwrap();
         let path = dir.path().join(".cursor/rules/graphswarm.mdc");
@@ -255,10 +263,13 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let cmd = InstallCommand {
             platform: "all".into(),
-            project:  Some(dir.path().to_str().unwrap().to_string()),
+            project: Some(dir.path().to_str().unwrap().to_string()),
         };
         cmd.execute().await.unwrap();
-        assert!(dir.path().join(".claude/skills/graphswarm/SKILL.md").exists());
+        assert!(dir
+            .path()
+            .join(".claude/skills/graphswarm/SKILL.md")
+            .exists());
         assert!(dir.path().join(".cursor/rules/graphswarm.mdc").exists());
         assert!(dir.path().join("AGENTS.md").exists());
     }
@@ -268,7 +279,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let cmd = InstallCommand {
             platform: "codex".into(),
-            project:  Some(dir.path().to_str().unwrap().to_string()),
+            project: Some(dir.path().to_str().unwrap().to_string()),
         };
         // Run twice -AGENTS.md must not contain ## GraphSwarm twice
         cmd.execute().await.unwrap();

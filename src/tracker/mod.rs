@@ -26,7 +26,7 @@ pub mod action_log;
 pub mod history;
 pub mod logger;
 
-pub use action_log::{AgentAction, ActionType, FileAccessCount};
+pub use action_log::{ActionType, AgentAction, FileAccessCount};
 pub use history::History;
 pub use logger::ActionLogger;
 

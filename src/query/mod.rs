@@ -49,11 +49,11 @@ mod tests {
     #[test]
     fn relevant_file_fields_accessible() {
         let f = RelevantFile {
-            file_path:       "x.py".into(),
+            file_path: "x.py".into(),
             relevance_score: 0.8,
-            reason:          "name match: foo".into(),
-            entities:        Vec::new(),
-            stale_warning:   None,
+            reason: "name match: foo".into(),
+            entities: Vec::new(),
+            stale_warning: None,
         };
         assert_eq!(f.relevance_score, 0.8);
         assert_eq!(f.file_path, "x.py");
@@ -63,11 +63,11 @@ mod tests {
     #[test]
     fn relevant_file_stale_warning_field() {
         let f = RelevantFile {
-            file_path:       "y.rs".into(),
+            file_path: "y.rs".into(),
             relevance_score: 0.5,
-            reason:          "graph match".into(),
-            entities:        Vec::new(),
-            stale_warning:   Some("File has pending changes".into()),
+            reason: "graph match".into(),
+            entities: Vec::new(),
+            stale_warning: Some("File has pending changes".into()),
         };
         assert!(f.stale_warning.is_some());
     }

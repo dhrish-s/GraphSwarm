@@ -42,15 +42,33 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn index(msg: impl Into<String>) -> Self { Error::Index(msg.into()) }
-    pub fn query(msg: impl Into<String>) -> Self { Error::Query(msg.into()) }
-    pub fn parser(msg: impl Into<String>) -> Self { Error::Parser(msg.into()) }
-    pub fn storage(msg: impl Into<String>) -> Self { Error::Storage(msg.into()) }
-    pub fn mcp(msg: impl Into<String>) -> Self { Error::Mcp(msg.into()) }
-    pub fn config(msg: impl Into<String>) -> Self { Error::Config(msg.into()) }
-    pub fn not_found(msg: impl Into<String>) -> Self { Error::NotFound(msg.into()) }
-    pub fn serialization(msg: impl Into<String>) -> Self { Error::Serialization(msg.into()) }
-    pub fn tracker(msg: impl Into<String>) -> Self { Error::Tracker(msg.into()) }
+    pub fn index(msg: impl Into<String>) -> Self {
+        Error::Index(msg.into())
+    }
+    pub fn query(msg: impl Into<String>) -> Self {
+        Error::Query(msg.into())
+    }
+    pub fn parser(msg: impl Into<String>) -> Self {
+        Error::Parser(msg.into())
+    }
+    pub fn storage(msg: impl Into<String>) -> Self {
+        Error::Storage(msg.into())
+    }
+    pub fn mcp(msg: impl Into<String>) -> Self {
+        Error::Mcp(msg.into())
+    }
+    pub fn config(msg: impl Into<String>) -> Self {
+        Error::Config(msg.into())
+    }
+    pub fn not_found(msg: impl Into<String>) -> Self {
+        Error::NotFound(msg.into())
+    }
+    pub fn serialization(msg: impl Into<String>) -> Self {
+        Error::Serialization(msg.into())
+    }
+    pub fn tracker(msg: impl Into<String>) -> Self {
+        Error::Tracker(msg.into())
+    }
 }
 
 #[cfg(test)]

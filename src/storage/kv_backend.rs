@@ -34,7 +34,11 @@ impl KvBackend {
     /// If the directory doesn't exist, sled creates it.
     pub fn open(path: &Path) -> Result<Self> {
         let db = sled::open(path).map_err(|e| {
-            Error::storage(format!("Failed to open KV store at {}: {}", path.display(), e))
+            Error::storage(format!(
+                "Failed to open KV store at {}: {}",
+                path.display(),
+                e
+            ))
         })?;
         Ok(Self { db })
     }
@@ -44,12 +48,15 @@ impl KvBackend {
         // serde_json::to_vec writes bytes directly -slightly faster than
         // to_string because it avoids allocating an intermediate String.
         let bytes = serde_json::to_vec(value).map_err(|e| {
-            Error::serialization(format!("Failed to serialize value for key '{}': {}", key, e))
+            Error::serialization(format!(
+                "Failed to serialize value for key '{}': {}",
+                key, e
+            ))
         })?;
 
-        self.db.insert(key.as_bytes(), bytes).map_err(|e| {
-            Error::storage(format!("Failed to write key '{}': {}", key, e))
-        })?;
+        self.db
+            .insert(key.as_bytes(), bytes)
+            .map_err(|e| Error::storage(format!("Failed to write key '{}': {}", key, e)))?;
 
         Ok(())
     }
@@ -58,9 +65,10 @@ impl KvBackend {
     ///
     /// Returns Ok(None) if the key doesn't exist -this is NOT an error.
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
-        let maybe_bytes = self.db.get(key.as_bytes()).map_err(|e| {
-            Error::storage(format!("Failed to read key '{}': {}", key, e))
-        })?;
+        let maybe_bytes = self
+            .db
+            .get(key.as_bytes())
+            .map_err(|e| Error::storage(format!("Failed to read key '{}': {}", key, e)))?;
 
         match maybe_bytes {
             None => Ok(None),
@@ -79,9 +87,9 @@ impl KvBackend {
 
     /// Deletes a key. Returns Ok(()) whether or not the key existed.
     pub fn delete(&self, key: &str) -> Result<()> {
-        self.db.remove(key.as_bytes()).map_err(|e| {
-            Error::storage(format!("Failed to delete key '{}': {}", key, e))
-        })?;
+        self.db
+            .remove(key.as_bytes())
+            .map_err(|e| Error::storage(format!("Failed to delete key '{}': {}", key, e)))?;
         Ok(())
     }
 
@@ -98,9 +106,8 @@ impl KvBackend {
             })?;
 
             // Our keys are always valid UTF-8 -we construct them ourselves.
-            let key = String::from_utf8(key_bytes.to_vec()).map_err(|e| {
-                Error::storage(format!("Key is not valid UTF-8: {}", e))
-            })?;
+            let key = String::from_utf8(key_bytes.to_vec())
+                .map_err(|e| Error::storage(format!("Key is not valid UTF-8: {}", e)))?;
 
             keys.push(key);
         }
@@ -124,18 +131,18 @@ impl KvBackend {
     /// to guarantee the data is durable before returning to the caller.
     pub fn flush(&self) -> Result<()> {
         // flush() returns the number of bytes flushed -we discard it.
-        self.db.flush().map_err(|e| {
-            Error::storage(format!("Failed to flush KV store: {}", e))
-        })?;
+        self.db
+            .flush()
+            .map_err(|e| Error::storage(format!("Failed to flush KV store: {}", e)))?;
         Ok(())
     }
 
     /// Returns true if the given key exists without deserializing its value.
     /// Faster than get() when you only need existence.
     pub fn contains_key(&self, key: &str) -> Result<bool> {
-        self.db.contains_key(key.as_bytes()).map_err(|e| {
-            Error::storage(format!("Failed to check key '{}': {}", key, e))
-        })
+        self.db
+            .contains_key(key.as_bytes())
+            .map_err(|e| Error::storage(format!("Failed to check key '{}': {}", key, e)))
     }
 }
 
@@ -254,7 +261,10 @@ mod tests {
         }
 
         let (backend, _dir) = temp_backend();
-        let val = Inner { x: 42, tags: vec!["a".into(), "b".into()] };
+        let val = Inner {
+            x: 42,
+            tags: vec!["a".into(), "b".into()],
+        };
         backend.set("complex:key", &val).unwrap();
         let result: Option<Inner> = backend.get("complex:key").unwrap();
         assert_eq!(result.unwrap(), val);

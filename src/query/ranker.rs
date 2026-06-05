@@ -8,8 +8,8 @@
 //!   3. Build a human-readable reason string
 //!   4. Sort by score descending and return top-K
 
-use crate::indexer::extractor::CodeEntity;
 use super::mod_types::RelevantFile;
+use crate::indexer::extractor::CodeEntity;
 use std::collections::HashMap;
 
 /// A scored entity ready for ranking.
@@ -39,23 +39,34 @@ pub fn rank_files(scored_entities: Vec<ScoredEntity>, top_k: usize) -> Vec<Relev
     // Group entities by file path.
     let mut by_file: HashMap<String, Vec<ScoredEntity>> = HashMap::new();
     for se in scored_entities {
-        by_file.entry(se.entity.file_path.clone()).or_default().push(se);
+        by_file
+            .entry(se.entity.file_path.clone())
+            .or_default()
+            .push(se);
     }
 
     // For each file, score = max entity score; reason comes from the best entity.
-    let mut files: Vec<RelevantFile> = by_file.into_iter().map(|(file_path, entities)| {
-        let best = entities.iter()
-            .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
-            .unwrap(); // safe: entities is non-empty
+    let mut files: Vec<RelevantFile> = by_file
+        .into_iter()
+        .map(|(file_path, entities)| {
+            let best = entities
+                .iter()
+                .max_by(|a, b| {
+                    a.score
+                        .partial_cmp(&b.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .unwrap(); // safe: entities is non-empty
 
-        RelevantFile {
-            file_path,
-            relevance_score: best.score,
-            reason: best.reason.clone(),
-            entities: entities.into_iter().map(|se| se.entity).collect(),
-            stale_warning: None, // populated by QueryEngine after ranking
-        }
-    }).collect();
+            RelevantFile {
+                file_path,
+                relevance_score: best.score,
+                reason: best.reason.clone(),
+                entities: entities.into_iter().map(|se| se.entity).collect(),
+                stale_warning: None, // populated by QueryEngine after ranking
+            }
+        })
+        .collect();
 
     // Sort descending. Use partial_cmp because f64 requires it; our scores
     // are always in [0.0, 1.0] so NaN cannot appear in practice.
@@ -73,13 +84,20 @@ pub fn rank_files(scored_entities: Vec<ScoredEntity>, top_k: usize) -> Vec<Relev
 ///
 /// Picks the most informative reason in priority order:
 /// name match > graph distance > recency > docstring > fallback.
-pub fn build_reason(entity: &CodeEntity, query: &str, distance: Option<usize>, seconds_ago: Option<f64>) -> String {
+pub fn build_reason(
+    entity: &CodeEntity,
+    query: &str,
+    distance: Option<usize>,
+    seconds_ago: Option<f64>,
+) -> String {
     let query_lower = query.to_lowercase();
 
     // Name match is the strongest and most interpretable signal.
     let name_lower = entity.name.to_lowercase();
     let name_matches = name_lower.contains(&query_lower)
-        || query_lower.split_whitespace().any(|t| t.len() >= 2 && name_lower.contains(t));
+        || query_lower
+            .split_whitespace()
+            .any(|t| t.len() >= 2 && name_lower.contains(t));
 
     if name_matches {
         return format!("name match: {}", entity.name);
@@ -88,7 +106,9 @@ pub fn build_reason(entity: &CodeEntity, query: &str, distance: Option<usize>, s
     // Also check file path -e.g. query "src" matching "src/auth.rs"
     let path_lower = entity.file_path.to_lowercase();
     if path_lower.contains(&query_lower)
-        || query_lower.split_whitespace().any(|t| t.len() >= 2 && path_lower.contains(t))
+        || query_lower
+            .split_whitespace()
+            .any(|t| t.len() >= 2 && path_lower.contains(t))
     {
         return format!("file path match: {}", entity.file_path);
     }
@@ -195,7 +215,7 @@ mod tests {
     fn rank_files_score_is_max_not_average() {
         // File has scores [0.9, 0.1] → file score must be 0.9
         let se1 = make_scored("a.rs", "high", 0.9);
-        let se2 = make_scored("a.rs", "low",  0.1);
+        let se2 = make_scored("a.rs", "low", 0.1);
         let results = rank_files(vec![se1, se2], 10);
         assert_eq!(results.len(), 1);
         assert!((results[0].relevance_score - 0.9).abs() < f64::EPSILON);
@@ -203,9 +223,9 @@ mod tests {
 
     #[test]
     fn rank_files_sorted_descending() {
-        let se1 = make_scored("a.rs", "low",  0.2);
+        let se1 = make_scored("a.rs", "low", 0.2);
         let se2 = make_scored("b.rs", "high", 0.9);
-        let se3 = make_scored("c.rs", "mid",  0.5);
+        let se3 = make_scored("c.rs", "mid", 0.5);
         let results = rank_files(vec![se1, se2, se3], 10);
         assert_eq!(results.len(), 3);
         assert!(results[0].relevance_score >= results[1].relevance_score);
@@ -241,7 +261,7 @@ mod tests {
 
     #[test]
     fn rank_files_reason_from_best_entity() {
-        let mut se1 = make_scored("a.rs", "low",  0.2);
+        let mut se1 = make_scored("a.rs", "low", 0.2);
         se1.reason = "low-score reason".to_string();
         let mut se2 = make_scored("a.rs", "high", 0.9);
         se2.reason = "high-score reason".to_string();
@@ -299,7 +319,10 @@ mod tests {
         // Docstring contains the query word exactly -not "authentication" (different word)
         e.docstring = Some("Handles authenticate calls".into());
         let r = build_reason(&e, "authenticate", None, None);
-        assert!(r.contains("authenticate") || r.contains("docstring"), "got: {r}");
+        assert!(
+            r.contains("authenticate") || r.contains("docstring"),
+            "got: {r}"
+        );
     }
 
     #[test]

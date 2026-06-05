@@ -43,7 +43,7 @@ use crate::storage::kv_backend::KvBackend;
 use crate::storage::schema::{
     action_key, history_count_key, history_error_key, history_recent_key,
 };
-use crate::tracker::action_log::{AgentAction, ActionType, FileAccessCount};
+use crate::tracker::action_log::{ActionType, AgentAction, FileAccessCount};
 use tokio::sync::mpsc;
 
 /// Buffered actions between the caller and the background write task.
@@ -105,12 +105,14 @@ impl ActionLogger {
 
     /// Convenience: log a `FileRead` action.
     pub async fn log_file_read(&self, file_path: &str) -> Result<()> {
-        self.log(AgentAction::new(ActionType::FileRead, file_path)).await
+        self.log(AgentAction::new(ActionType::FileRead, file_path))
+            .await
     }
 
     /// Convenience: log a `FileEdit` action.
     pub async fn log_file_edit(&self, file_path: &str) -> Result<()> {
-        self.log(AgentAction::new(ActionType::FileEdit, file_path)).await
+        self.log(AgentAction::new(ActionType::FileEdit, file_path))
+            .await
     }
 
     /// Convenience: log an `Error` action with a message in metadata.
@@ -140,16 +142,16 @@ async fn background_writer(mut rx: mpsc::Receiver<AgentAction>, kv: KvBackend) {
     while let Some(action) = rx.recv().await {
         // ── Write 1: full action record ──────────────────────────────────────
         if let Err(e) = kv.set(&action_key(&action.id.to_string()), &action) {
-            eprintln!("[graphswarm tracker] failed to write action {}: {}", action.id, e);
+            eprintln!(
+                "[graphswarm tracker] failed to write action {}: {}",
+                action.id, e
+            );
             continue; // skip remaining writes for this action; move to next
         }
 
         // ── Write 2: recency index ────────────────────────────────────────────
         // Key sorts chronologically so recent_files() just reverses the scan.
-        let recent_key = history_recent_key(
-            &action.timestamp.to_rfc3339(),
-            &action.id.to_string(),
-        );
+        let recent_key = history_recent_key(&action.timestamp.to_rfc3339(), &action.id.to_string());
         if let Err(e) = kv.set(&recent_key, &action.file_path) {
             eprintln!("[graphswarm tracker] failed to write recency index: {}", e);
         }
@@ -159,10 +161,8 @@ async fn background_writer(mut rx: mpsc::Receiver<AgentAction>, kv: KvBackend) {
 
         // ── Write 4: error index (conditional) ───────────────────────────────
         if action.is_error() {
-            let error_key = history_error_key(
-                &action.timestamp.to_rfc3339(),
-                &action.id.to_string(),
-            );
+            let error_key =
+                history_error_key(&action.timestamp.to_rfc3339(), &action.id.to_string());
             if let Err(e) = kv.set(&error_key, &action) {
                 eprintln!("[graphswarm tracker] failed to write error index: {}", e);
             }
@@ -186,8 +186,8 @@ fn update_file_count(kv: &KvBackend, action: &AgentAction) {
         .get::<FileAccessCount>(&count_key)
         .unwrap_or(None)
         .unwrap_or_else(|| FileAccessCount {
-            file_path:     action.file_path.clone(),
-            count:         0,
+            file_path: action.file_path.clone(),
+            count: 0,
             last_accessed: action.timestamp,
         });
 
@@ -270,7 +270,10 @@ mod tests {
     #[tokio::test]
     async fn log_error_visible_in_recent_errors() {
         let (logger, history, _dir) = open_logger_and_history();
-        logger.log_error("src/lib.rs", "compile error").await.unwrap();
+        logger
+            .log_error("src/lib.rs", "compile error")
+            .await
+            .unwrap();
         flush_background().await;
         let errors = history.recent_errors(10).unwrap();
         assert_eq!(errors.len(), 1);
@@ -362,7 +365,10 @@ mod tests {
     async fn total_actions_correct() {
         let (logger, history, _dir) = open_logger_and_history();
         for i in 0..5_u32 {
-            logger.log_file_read(&format!("file{}.rs", i)).await.unwrap();
+            logger
+                .log_file_read(&format!("file{}.rs", i))
+                .await
+                .unwrap();
         }
         flush_background().await;
         assert_eq!(history.total_actions().unwrap(), 5);

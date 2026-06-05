@@ -17,20 +17,19 @@
 //! which is O(nodes_visited) reads. Still fast because sled reads are
 //! sub-millisecond on SSD.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use super::{
+    kv_backend::KvBackend,
+    schema::{
+        callees_key, callers_key, edge_key, entity_key, file_entities_key, lang_index_key,
+        meta_graph_key, stale_key, watcher_last_reconcile_key,
+    },
+};
 use crate::error::{Error, Result};
 use crate::indexer::{
     call_graph::{CallGraph, GraphMetadata},
     extractor::{CodeEntity, Language},
 };
-use super::{
-    kv_backend::KvBackend,
-    schema::{
-        callers_key, callees_key, edge_key, entity_key,
-        file_entities_key, lang_index_key, meta_graph_key,
-        stale_key, watcher_last_reconcile_key,
-    },
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Graph-aware storage layer built on KvBackend.
 ///
@@ -141,7 +140,7 @@ impl GraphStore {
 
         if entity_keys.is_empty() {
             return Err(Error::storage(
-                "No graph in store. Run `graphswarm index` first."
+                "No graph in store. Run `graphswarm index` first.",
             ));
         }
 
@@ -158,9 +157,7 @@ impl GraphStore {
         // We only iterate entity IDs we already loaded -avoids scanning edge: keys.
         let ids: Vec<String> = graph.entities.keys().cloned().collect();
         for id in ids {
-            let callees: Vec<String> = self.kv
-                .get(&callees_key(&id))?
-                .unwrap_or_default();
+            let callees: Vec<String> = self.kv.get(&callees_key(&id))?.unwrap_or_default();
             for callee_id in callees {
                 graph.add_call(id.clone(), callee_id);
             }
@@ -182,23 +179,20 @@ impl GraphStore {
     ///
     /// O(1) KV read for the callers list, O(|callers|) reads for full entities.
     pub fn find_callers(&self, entity_id: &str) -> Result<Vec<CodeEntity>> {
-        let ids: Vec<String> = self.kv
-            .get(&callers_key(entity_id))?
-            .unwrap_or_default();
+        let ids: Vec<String> = self.kv.get(&callers_key(entity_id))?.unwrap_or_default();
         self.fetch_entities(&ids)
     }
 
     /// Returns all entities that the given entity CALLS.
     pub fn find_callees(&self, entity_id: &str) -> Result<Vec<CodeEntity>> {
-        let ids: Vec<String> = self.kv
-            .get(&callees_key(entity_id))?
-            .unwrap_or_default();
+        let ids: Vec<String> = self.kv.get(&callees_key(entity_id))?.unwrap_or_default();
         self.fetch_entities(&ids)
     }
 
     /// Returns all entities defined in the given file.
     pub fn find_in_file(&self, file_path: &str) -> Result<Vec<CodeEntity>> {
-        let ids: Vec<String> = self.kv
+        let ids: Vec<String> = self
+            .kv
             .get(&file_entities_key(file_path))?
             .unwrap_or_default();
         self.fetch_entities(&ids)
@@ -231,7 +225,8 @@ impl GraphStore {
 
     /// Returns all entities for the given language.
     pub fn find_by_language(&self, language: &Language) -> Result<Vec<CodeEntity>> {
-        let ids: Vec<String> = self.kv
+        let ids: Vec<String> = self
+            .kv
             .get(&lang_index_key(&language.to_string()))?
             .unwrap_or_default();
         self.fetch_entities(&ids)
@@ -278,9 +273,7 @@ impl GraphStore {
 
             if depth < max_depth {
                 // One KV read to get the callees of this node
-                let callees: Vec<String> = self.kv
-                    .get(&callees_key(&id))?
-                    .unwrap_or_default();
+                let callees: Vec<String> = self.kv.get(&callees_key(&id))?.unwrap_or_default();
 
                 for callee in callees {
                     if !visited.contains(&callee) {
@@ -309,9 +302,7 @@ impl GraphStore {
 
             if depth < max_depth {
                 // One KV read to get the callers of this node (reverse edges)
-                let callers: Vec<String> = self.kv
-                    .get(&callers_key(&id))?
-                    .unwrap_or_default();
+                let callers: Vec<String> = self.kv.get(&callers_key(&id))?.unwrap_or_default();
 
                 for caller in callers {
                     if !visited.contains(&caller) {
@@ -358,19 +349,17 @@ impl GraphStore {
     ///
     /// Then delete the file_entities index for the file.
     pub fn delete_file(&self, file_path: &str) -> Result<()> {
-        let entity_ids: Vec<String> = self.kv
+        let entity_ids: Vec<String> = self
+            .kv
             .get(&file_entities_key(file_path))?
             .unwrap_or_default();
 
         for entity_id in &entity_ids {
             // 1. Remove from callers' callees lists
-            let callers_of: Vec<String> = self.kv
-                .get(&callers_key(entity_id))?
-                .unwrap_or_default();
+            let callers_of: Vec<String> = self.kv.get(&callers_key(entity_id))?.unwrap_or_default();
             for caller_id in &callers_of {
-                let mut callees: Vec<String> = self.kv
-                    .get(&callees_key(caller_id))?
-                    .unwrap_or_default();
+                let mut callees: Vec<String> =
+                    self.kv.get(&callees_key(caller_id))?.unwrap_or_default();
                 callees.retain(|id| id != entity_id);
                 if callees.is_empty() {
                     self.kv.delete(&callees_key(caller_id))?;
@@ -381,13 +370,10 @@ impl GraphStore {
             }
 
             // 2. Remove from callees' callers lists
-            let callees_of: Vec<String> = self.kv
-                .get(&callees_key(entity_id))?
-                .unwrap_or_default();
+            let callees_of: Vec<String> = self.kv.get(&callees_key(entity_id))?.unwrap_or_default();
             for callee_id in &callees_of {
-                let mut callers: Vec<String> = self.kv
-                    .get(&callers_key(callee_id))?
-                    .unwrap_or_default();
+                let mut callers: Vec<String> =
+                    self.kv.get(&callers_key(callee_id))?.unwrap_or_default();
                 callers.retain(|id| id != entity_id);
                 if callers.is_empty() {
                     self.kv.delete(&callers_key(callee_id))?;
@@ -432,9 +418,10 @@ impl GraphStore {
     /// Returns the file paths of all files currently marked stale.
     pub fn all_stale_files(&self) -> Result<Vec<String>> {
         let keys = self.kv.list_prefix("stale:")?;
-        Ok(keys.iter().map(|k| {
-            k.strip_prefix("stale:").unwrap_or(k).replace('|', "/")
-        }).collect())
+        Ok(keys
+            .iter()
+            .map(|k| k.strip_prefix("stale:").unwrap_or(k).replace('|', "/"))
+            .collect())
     }
 
     /// Returns all file paths transitively affected by changes to `file_path`.
@@ -443,7 +430,8 @@ impl GraphStore {
     /// calls into `file_path`. These files may need re-indexing or cache
     /// invalidation after `file_path` changes.
     pub fn impact_subtree(&self, file_path: &str) -> Result<Vec<String>> {
-        let entity_ids: Vec<String> = self.kv
+        let entity_ids: Vec<String> = self
+            .kv
             .get(&file_entities_key(file_path))?
             .unwrap_or_default();
 
@@ -482,21 +470,22 @@ impl GraphStore {
         self.kv.set(&entity_key(&entity.id), entity)?;
 
         // File entities index
-        let mut file_ids: Vec<String> = self.kv
+        let mut file_ids: Vec<String> = self
+            .kv
             .get(&file_entities_key(&entity.file_path))?
             .unwrap_or_default();
         if !file_ids.contains(&entity.id) {
             file_ids.push(entity.id.clone());
-            self.kv.set(&file_entities_key(&entity.file_path), &file_ids)?;
+            self.kv
+                .set(&file_entities_key(&entity.file_path), &file_ids)?;
         }
 
         // Callees + edge existence + callers of callees
         if !entity.calls.is_empty() {
             self.kv.set(&callees_key(&entity.id), &entity.calls)?;
             for callee_id in &entity.calls {
-                let mut callers: Vec<String> = self.kv
-                    .get(&callers_key(callee_id))?
-                    .unwrap_or_default();
+                let mut callers: Vec<String> =
+                    self.kv.get(&callers_key(callee_id))?.unwrap_or_default();
                 if !callers.contains(&entity.id) {
                     callers.push(entity.id.clone());
                     self.kv.set(&callers_key(callee_id), &callers)?;
@@ -520,7 +509,9 @@ impl GraphStore {
 
     /// Deletes all graph-owned keys so re-indexing is always consistent.
     fn clear_graph_keys(&self) -> Result<()> {
-        for prefix in &["entity:", "callers:", "callees:", "file:", "edge:", "index:", "meta:"] {
+        for prefix in &[
+            "entity:", "callers:", "callees:", "file:", "edge:", "index:", "meta:",
+        ] {
             for key in self.kv.list_prefix(prefix)? {
                 self.kv.delete(&key)?;
             }
@@ -563,7 +554,8 @@ mod tests {
             name: "main".into(),
             entity_type: EntityType::Function,
             file_path: "src/main.rs".into(),
-            line_start: 1, line_end: 10,
+            line_start: 1,
+            line_end: 10,
             language: Language::Rust,
             docstring: Some("Entry point".into()),
             calls: vec!["src/auth.rs::authenticate_user".into()],
@@ -574,7 +566,8 @@ mod tests {
             name: "authenticate_user".into(),
             entity_type: EntityType::Function,
             file_path: "src/auth.rs".into(),
-            line_start: 5, line_end: 25,
+            line_start: 5,
+            line_end: 25,
             language: Language::Rust,
             docstring: Some("Authenticates a user by JWT token".into()),
             calls: vec!["src/auth.rs::verify_token".into()],
@@ -585,7 +578,8 @@ mod tests {
             name: "verify_token".into(),
             entity_type: EntityType::Function,
             file_path: "src/auth.rs".into(),
-            line_start: 30, line_end: 45,
+            line_start: 30,
+            line_end: 45,
             language: Language::Rust,
             docstring: None,
             calls: vec![],
@@ -600,8 +594,14 @@ mod tests {
         graph.add_entity(auth_e);
         graph.add_entity(verify_e);
 
-        graph.add_call("src/main.rs::main".into(), "src/auth.rs::authenticate_user".into());
-        graph.add_call("src/auth.rs::authenticate_user".into(), "src/auth.rs::verify_token".into());
+        graph.add_call(
+            "src/main.rs::main".into(),
+            "src/auth.rs::authenticate_user".into(),
+        );
+        graph.add_call(
+            "src/auth.rs::authenticate_user".into(),
+            "src/auth.rs::verify_token".into(),
+        );
 
         graph
     }
@@ -629,11 +629,17 @@ mod tests {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
         let loaded = store.load_graph().unwrap();
-        let auth = loaded.entities.get("src/auth.rs::authenticate_user").unwrap();
+        let auth = loaded
+            .entities
+            .get("src/auth.rs::authenticate_user")
+            .unwrap();
         assert_eq!(auth.name, "authenticate_user");
         assert_eq!(auth.file_path, "src/auth.rs");
         assert_eq!(auth.line_start, 5);
-        assert_eq!(auth.docstring.as_deref(), Some("Authenticates a user by JWT token"));
+        assert_eq!(
+            auth.docstring.as_deref(),
+            Some("Authenticates a user by JWT token")
+        );
     }
 
     #[test]
@@ -657,7 +663,9 @@ mod tests {
     fn find_callers_correct() {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
-        let callers = store.find_callers("src/auth.rs::authenticate_user").unwrap();
+        let callers = store
+            .find_callers("src/auth.rs::authenticate_user")
+            .unwrap();
         assert_eq!(callers.len(), 1);
         assert_eq!(callers[0].name, "main");
     }
@@ -682,7 +690,9 @@ mod tests {
     fn find_callees_correct() {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
-        let callees = store.find_callees("src/auth.rs::authenticate_user").unwrap();
+        let callees = store
+            .find_callees("src/auth.rs::authenticate_user")
+            .unwrap();
         assert_eq!(callees.len(), 1);
         assert_eq!(callees[0].name, "verify_token");
     }
@@ -691,7 +701,10 @@ mod tests {
     fn find_callees_on_leaf_returns_empty() {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
-        assert!(store.find_callees("src/auth.rs::verify_token").unwrap().is_empty());
+        assert!(store
+            .find_callees("src/auth.rs::verify_token")
+            .unwrap()
+            .is_empty());
     }
 
     // ── find_in_file ──────────────────────────────────────────────────────────
@@ -737,7 +750,9 @@ mod tests {
     fn edge_exists_true() {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
-        assert!(store.edge_exists("src/main.rs::main", "src/auth.rs::authenticate_user").unwrap());
+        assert!(store
+            .edge_exists("src/main.rs::main", "src/auth.rs::authenticate_user")
+            .unwrap());
     }
 
     #[test]
@@ -745,15 +760,21 @@ mod tests {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
         // main does not directly call verify_token (only through authenticate_user)
-        assert!(!store.edge_exists("src/main.rs::main", "src/auth.rs::verify_token").unwrap());
+        assert!(!store
+            .edge_exists("src/main.rs::main", "src/auth.rs::verify_token")
+            .unwrap());
     }
 
     #[test]
     fn edge_exists_is_directional() {
         let (store, _dir) = temp_store();
         store.store_graph(&make_test_graph()).unwrap();
-        assert!(store.edge_exists("src/main.rs::main", "src/auth.rs::authenticate_user").unwrap());
-        assert!(!store.edge_exists("src/auth.rs::authenticate_user", "src/main.rs::main").unwrap());
+        assert!(store
+            .edge_exists("src/main.rs::main", "src/auth.rs::authenticate_user")
+            .unwrap());
+        assert!(!store
+            .edge_exists("src/auth.rs::authenticate_user", "src/main.rs::main")
+            .unwrap());
     }
 
     // ── BFS traversal ─────────────────────────────────────────────────────────
@@ -803,7 +824,9 @@ mod tests {
 
         {
             let backend = KvBackend::open(dir.path()).unwrap();
-            GraphStore::new(backend).store_graph(&make_test_graph()).unwrap();
+            GraphStore::new(backend)
+                .store_graph(&make_test_graph())
+                .unwrap();
         }
 
         {
@@ -832,7 +855,10 @@ mod tests {
         // the callees list of main should no longer contain authenticate_user
         store.delete_file("src/auth.rs").unwrap();
         let callees = store.find_callees("src/main.rs::main").unwrap();
-        assert!(callees.is_empty(), "main should have no callees after auth.rs deleted");
+        assert!(
+            callees.is_empty(),
+            "main should have no callees after auth.rs deleted"
+        );
     }
 
     #[test]
@@ -878,8 +904,10 @@ mod tests {
         store.store_graph(&make_test_graph()).unwrap();
         // auth.rs is called by main.rs -impact_subtree should surface main.rs
         let affected = store.impact_subtree("src/auth.rs").unwrap();
-        assert!(affected.contains(&"src/main.rs".to_string()),
-            "main.rs calls into auth.rs, must appear in impact subtree");
+        assert!(
+            affected.contains(&"src/main.rs".to_string()),
+            "main.rs calls into auth.rs, must appear in impact subtree"
+        );
     }
 
     #[test]
@@ -928,7 +956,9 @@ mod tests {
         // Re-index with a smaller graph (verify_token removed)
         let mut small = make_test_graph();
         small.entities.remove("src/auth.rs::verify_token");
-        small.edges.retain(|(_, callee)| callee != "src/auth.rs::verify_token");
+        small
+            .edges
+            .retain(|(_, callee)| callee != "src/auth.rs::verify_token");
         store.store_graph(&small).unwrap();
 
         // load_graph should reflect the new index exactly -no ghost entities

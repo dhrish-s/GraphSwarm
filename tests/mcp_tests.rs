@@ -14,8 +14,8 @@ fn tool_definitions_valid() {
 fn protocol_round_trip() {
     use graphswarm::mcp::ContentBlock;
     let block = ContentBlock::text("hello");
-    let resp  = McpResponse::tool_result(Some(serde_json::json!(1)), vec![block]);
-    let json  = serde_json::to_string(&resp).unwrap();
+    let resp = McpResponse::tool_result(Some(serde_json::json!(1)), vec![block]);
+    let json = serde_json::to_string(&resp).unwrap();
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(v["jsonrpc"], "2.0");
     assert_eq!(v["result"]["content"][0]["type"], "text");

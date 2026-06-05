@@ -1,12 +1,12 @@
-use crate::error::{Error, Result};
 use super::extractor::{CodeEntity, EntityType, Language};
+use crate::error::{Error, Result};
 use std::path::Path;
-use tree_sitter::{Parser, Node};
+use tree_sitter::{Node, Parser};
 
-const PYTHON_EXTENSIONS:      &[&str] = &["py"];
-const RUST_EXTENSIONS:        &[&str] = &["rs"];
-const JAVASCRIPT_EXTENSIONS:  &[&str] = &["js", "jsx", "mjs", "cjs"];
-const TYPESCRIPT_EXTENSIONS:  &[&str] = &["ts", "tsx", "mts", "cts"];
+const PYTHON_EXTENSIONS: &[&str] = &["py"];
+const RUST_EXTENSIONS: &[&str] = &["rs"];
+const JAVASCRIPT_EXTENSIONS: &[&str] = &["js", "jsx", "mjs", "cjs"];
+const TYPESCRIPT_EXTENSIONS: &[&str] = &["ts", "tsx", "mts", "cts"];
 
 #[derive(Debug, Clone)]
 pub struct Import {
@@ -68,8 +68,8 @@ impl CodeParser {
 
         let root = tree.root_node();
         let imports = match language {
-            "python"     => self.extract_python_imports(root, source, path),
-            "rust"       => self.extract_rust_imports(root, source, path),
+            "python" => self.extract_python_imports(root, source, path),
+            "rust" => self.extract_rust_imports(root, source, path),
             "javascript" | "typescript" => self.extract_js_imports(root, source, path),
             _ => Vec::new(),
         };
@@ -114,25 +114,29 @@ impl CodeParser {
         // First pass: collect entities with their defining node so we can scan
         // each entity body for call-sites and resolve intra-file edges.
         let local_entities_nodes: Vec<(CodeEntity, Node)> = match language {
-            "python"     => self.collect_python_entities(root, source, path, ""),
-            "rust"       => self.collect_rust_entities(root, source, path, ""),
+            "python" => self.collect_python_entities(root, source, path, ""),
+            "rust" => self.collect_rust_entities(root, source, path, ""),
             "javascript" => self.collect_js_entities(root, source, path, Language::JavaScript),
             "typescript" => self.collect_js_entities(root, source, path, Language::TypeScript),
             _ => Vec::new(),
         };
 
         // Build name -> id map for quick resolution within the same file.
-        let mut name_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut name_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
         for (e, _) in &local_entities_nodes {
-            name_map.entry(e.name.clone()).or_default().push(e.id.clone());
+            name_map
+                .entry(e.name.clone())
+                .or_default()
+                .push(e.id.clone());
         }
 
         // Second pass: scan each entity node for call expressions and populate calls
         let mut resolved_entities: Vec<CodeEntity> = Vec::new();
         for (mut e, node) in local_entities_nodes {
             let callees = match language {
-                "python"     => self.find_python_calls(node, source),
-                "rust"       => self.find_rust_calls(node, source),
+                "python" => self.find_python_calls(node, source),
+                "rust" => self.find_rust_calls(node, source),
                 "javascript" | "typescript" => self.find_js_calls(node, source),
                 _ => Vec::new(),
             };
@@ -143,7 +147,8 @@ impl CodeParser {
                         e.add_call(id.clone());
                     }
                 } else if let Some(last_name) = callee_name
-                    .split(['.', ':']).rfind(|s: &&str| !s.is_empty())
+                    .split(['.', ':'])
+                    .rfind(|s: &&str| !s.is_empty())
                 {
                     if let Some(ids) = name_map.get(last_name) {
                         for id in ids {
@@ -261,24 +266,15 @@ impl CodeParser {
                         .find(|child| child.kind() == "block")
                     {
                         for method in body.named_children(&mut body.walk()) {
-                            entities.extend(self.collect_python_entities(
-                                method,
-                                source,
-                                path,
-                                &name,
-                            ));
+                            entities
+                                .extend(self.collect_python_entities(method, source, path, &name));
                         }
                     }
                 }
             }
             _ => {
                 for child in node.named_children(&mut cursor) {
-                    entities.extend(self.collect_python_entities(
-                        child,
-                        source,
-                        path,
-                        parent_name,
-                    ));
+                    entities.extend(self.collect_python_entities(child, source, path, parent_name));
                 }
             }
         }
@@ -302,7 +298,12 @@ impl CodeParser {
             return None;
         }
 
-        Some(self.node_text(expr, source).trim_matches('"').trim_matches('\'').to_string())
+        Some(
+            self.node_text(expr, source)
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string(),
+        )
     }
 
     fn find_python_calls<'a>(&self, node: Node<'a>, source: &str) -> Vec<String> {
@@ -367,22 +368,12 @@ impl CodeParser {
                     .unwrap_or_default();
 
                 for child in node.named_children(&mut cursor) {
-                    entities.extend(self.collect_rust_entities(
-                        child,
-                        source,
-                        path,
-                        &impl_name,
-                    ));
+                    entities.extend(self.collect_rust_entities(child, source, path, &impl_name));
                 }
             }
             _ => {
                 for child in node.named_children(&mut cursor) {
-                    entities.extend(self.collect_rust_entities(
-                        child,
-                        source,
-                        path,
-                        parent_name,
-                    ));
+                    entities.extend(self.collect_rust_entities(child, source, path, parent_name));
                 }
             }
         }
@@ -432,11 +423,14 @@ impl CodeParser {
                 if let Some(name_node) = node.child_by_field_name("name") {
                     let name = self.node_text(name_node, source);
                     let entity = CodeEntity::new(
-                        format!("{path}::{name}"), name,
-                        EntityType::Function, path.into(),
+                        format!("{path}::{name}"),
+                        name,
+                        EntityType::Function,
+                        path.into(),
                         node.start_position().row as u32 + 1,
                         node.end_position().row as u32 + 1,
-                        lang, None,
+                        lang,
+                        None,
                     );
                     entities.push((entity, node));
                 }
@@ -445,17 +439,21 @@ impl CodeParser {
                 // const foo = () => { ... }  or  const foo = function() { ... }
                 for child in node.named_children(&mut cursor) {
                     if child.kind() == "variable_declarator" {
-                        let name_opt = child.child_by_field_name("name")
+                        let name_opt = child
+                            .child_by_field_name("name")
                             .map(|n| self.node_text(n, source));
                         let value_opt = child.child_by_field_name("value");
                         if let (Some(name), Some(val)) = (name_opt, value_opt) {
                             if matches!(val.kind(), "arrow_function" | "function") {
                                 let entity = CodeEntity::new(
-                                    format!("{path}::{name}"), name,
-                                    EntityType::Function, path.into(),
+                                    format!("{path}::{name}"),
+                                    name,
+                                    EntityType::Function,
+                                    path.into(),
                                     child.start_position().row as u32 + 1,
                                     child.end_position().row as u32 + 1,
-                                    lang, None,
+                                    lang,
+                                    None,
                                 );
                                 entities.push((entity, val));
                             }
@@ -467,11 +465,14 @@ impl CodeParser {
                 if let Some(name_node) = node.child_by_field_name("name") {
                     let name = self.node_text(name_node, source);
                     let entity = CodeEntity::new(
-                        format!("{path}::{name}"), name.clone(),
-                        EntityType::Class, path.into(),
+                        format!("{path}::{name}"),
+                        name.clone(),
+                        EntityType::Class,
+                        path.into(),
                         node.start_position().row as u32 + 1,
                         node.end_position().row as u32 + 1,
-                        lang, None,
+                        lang,
+                        None,
                     );
                     entities.push((entity, node));
 
@@ -483,11 +484,14 @@ impl CodeParser {
                                 if let Some(mname_node) = member.child_by_field_name("name") {
                                     let mname = self.node_text(mname_node, source);
                                     let method = CodeEntity::new(
-                                        format!("{path}::{name}.{mname}"), mname,
-                                        EntityType::Method, path.into(),
+                                        format!("{path}::{name}.{mname}"),
+                                        mname,
+                                        EntityType::Method,
+                                        path.into(),
                                         member.start_position().row as u32 + 1,
                                         member.end_position().row as u32 + 1,
-                                        lang, None,
+                                        lang,
+                                        None,
                                     );
                                     entities.push((method, member));
                                 }
@@ -542,7 +546,8 @@ impl CodeParser {
             if child.kind() == "import_statement" {
                 // import { foo, bar } from './module'
                 // import defaultExport from './module'
-                let source_str = child.named_children(&mut child.walk())
+                let source_str = child
+                    .named_children(&mut child.walk())
                     .find(|n| n.kind() == "string")
                     .map(|n| {
                         let raw = self.node_text(n, source);
@@ -571,14 +576,18 @@ impl CodeParser {
                                     let mut ni_cursor = item.walk();
                                     for spec in item.named_children(&mut ni_cursor) {
                                         if spec.kind() == "import_specifier" {
-                                            let spec_name = spec.named_child(0)
+                                            let spec_name = spec
+                                                .named_child(0)
                                                 .map(|n| self.node_text(n, source))
                                                 .unwrap_or_default();
                                             let alias = if spec.named_child_count() > 1 {
-                                                spec.named_child(1).map(|n| self.node_text(n, source))
-                                            } else { None };
-                                            let imported_name = alias.clone()
-                                                .unwrap_or_else(|| spec_name.clone());
+                                                spec.named_child(1)
+                                                    .map(|n| self.node_text(n, source))
+                                            } else {
+                                                None
+                                            };
+                                            let imported_name =
+                                                alias.clone().unwrap_or_else(|| spec_name.clone());
                                             imports.push(Import {
                                                 source_file: file.to_string(),
                                                 module_path: source_str.clone(),
@@ -600,12 +609,7 @@ impl CodeParser {
         imports
     }
 
-    fn extract_python_imports(
-        &self,
-        node: Node,
-        source: &str,
-        file: &str,
-    ) -> Vec<Import> {
+    fn extract_python_imports(&self, node: Node, source: &str, file: &str) -> Vec<Import> {
         let mut imports = Vec::new();
         let mut cursor = node.walk();
 
@@ -629,7 +633,8 @@ impl CodeParser {
                     } else if child.kind() == "import_alias" {
                         if let Some(first) = child.named_child(0) {
                             let module_path = self.node_text(first, source);
-                            let alias = child.child_by_field_name("alias")
+                            let alias = child
+                                .child_by_field_name("alias")
                                 .map(|n| self.node_text(n, source));
                             let imported_name = alias.clone().unwrap_or_else(|| {
                                 module_path
@@ -659,7 +664,10 @@ impl CodeParser {
 
                 for child in node.named_children(&mut cursor) {
                     if module_node
-                        .map(|module| child.start_byte() == module.start_byte() && child.end_byte() == module.end_byte())
+                        .map(|module| {
+                            child.start_byte() == module.start_byte()
+                                && child.end_byte() == module.end_byte()
+                        })
                         .unwrap_or(false)
                     {
                         continue;
@@ -671,7 +679,8 @@ impl CodeParser {
                             if imp.kind() == "import_alias" || imp.kind() == "aliased_import" {
                                 if let Some(first) = imp.named_child(0) {
                                     let symbol = self.node_text(first, source);
-                                    let alias = imp.child_by_field_name("alias")
+                                    let alias = imp
+                                        .child_by_field_name("alias")
                                         .map(|n| self.node_text(n, source));
                                     imports_list.push((symbol, alias));
                                 }
@@ -683,7 +692,8 @@ impl CodeParser {
                     } else if child.kind() == "import_alias" || child.kind() == "aliased_import" {
                         if let Some(first) = child.named_child(0) {
                             let symbol = self.node_text(first, source);
-                            let alias = child.child_by_field_name("alias")
+                            let alias = child
+                                .child_by_field_name("alias")
                                 .map(|n| self.node_text(n, source));
                             imports_list.push((symbol, alias));
                         }
@@ -716,12 +726,7 @@ impl CodeParser {
         imports
     }
 
-    fn extract_rust_imports(
-        &self,
-        node: Node,
-        source: &str,
-        file: &str,
-    ) -> Vec<Import> {
+    fn extract_rust_imports(&self, node: Node, source: &str, file: &str) -> Vec<Import> {
         let mut imports = Vec::new();
         let mut cursor = node.walk();
 
@@ -739,12 +744,7 @@ impl CodeParser {
         imports
     }
 
-    fn parse_rust_use_declaration(
-        &self,
-        node: Node,
-        source: &str,
-        file: &str,
-    ) -> Vec<Import> {
+    fn parse_rust_use_declaration(&self, node: Node, source: &str, file: &str) -> Vec<Import> {
         let mut use_text = self.node_text(node, source).trim().to_string();
         if let Some(rest) = use_text.strip_prefix("use") {
             use_text = rest.trim().to_string();
@@ -790,8 +790,7 @@ impl CodeParser {
                     let nested_body = item
                         .split_once('{')
                         .and_then(|(_, right)| right.strip_suffix('}'))
-                        .unwrap_or(""
-                        );
+                        .unwrap_or("");
                     let full_prefix = if prefix.is_empty() {
                         nested_prefix.to_string()
                     } else {
@@ -817,9 +816,9 @@ impl CodeParser {
         }
 
         let (path, alias) = self.parse_rust_use_alias(path_text);
-        let imported_name = alias.clone().unwrap_or_else(|| {
-            path.split("::").last().unwrap_or_default().to_string()
-        });
+        let imported_name = alias
+            .clone()
+            .unwrap_or_else(|| path.split("::").last().unwrap_or_default().to_string());
         let path_segments: Vec<&str> = path.split("::").collect();
         let symbol = path_segments.last().map(|s| s.to_string());
         let module_path = if path_segments.len() > 1 {

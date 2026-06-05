@@ -1,7 +1,7 @@
+use super::extractor::{CodeEntity, Language};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
-use super::extractor::{CodeEntity, Language};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphMetadata {
@@ -68,21 +68,26 @@ impl CallGraph {
     }
 
     pub fn get_callees(&self, id: &str) -> Vec<&CodeEntity> {
-        self.edges.iter()
+        self.edges
+            .iter()
             .filter(|(caller, _)| caller == id)
             .filter_map(|(_, callee)| self.entities.get(callee))
             .collect()
     }
 
     pub fn get_callers(&self, id: &str) -> Vec<&CodeEntity> {
-        self.edges.iter()
+        self.edges
+            .iter()
             .filter(|(_, callee)| callee == id)
             .filter_map(|(caller, _)| self.entities.get(caller))
             .collect()
     }
 
     pub fn get_entities_in_file(&self, file_path: &str) -> Vec<&CodeEntity> {
-        self.entities.values().filter(|e| e.file_path == file_path).collect()
+        self.entities
+            .values()
+            .filter(|e| e.file_path == file_path)
+            .collect()
     }
 
     pub fn files(&self) -> Vec<String> {
@@ -147,13 +152,15 @@ impl CallGraph {
 }
 
 impl Default for CallGraph {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::indexer::extractor::{EntityType, Language, CodeEntity};
+    use crate::indexer::extractor::{CodeEntity, EntityType, Language};
 
     fn entity(id: &str, file_path: &str) -> CodeEntity {
         CodeEntity::new(

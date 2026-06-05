@@ -10,11 +10,11 @@ use graphswarm::tracker::History;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let db_path = std::path::Path::new(".graphswarm_db");
-    let kv      = KvBackend::open(db_path)?;
-    let store   = GraphStore::new(kv.clone());
+    let kv = KvBackend::open(db_path)?;
+    let store = GraphStore::new(kv.clone());
     let history = History::new(kv);
 
-    let engine  = QueryEngine::new(store, history);
+    let engine = QueryEngine::new(store, history);
     let results = engine.query("Fix payment timeout bug", 5)?;
 
     if results.is_empty() {

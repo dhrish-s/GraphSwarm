@@ -1,11 +1,11 @@
-use clap::Args;
 use crate::error::Result;
 use crate::indexer::CodeIndexer;
 use crate::storage::{GraphStore, KvBackend};
 use crate::tracker::ActionLogger;
-use std::path::Path;
-use std::fs;
+use clap::Args;
 use serde_json;
+use std::fs;
+use std::path::Path;
 
 #[derive(Args)]
 pub struct IndexCommand {
@@ -42,10 +42,16 @@ impl IndexCommand {
         // Validate path
         let repo_path = Path::new(&self.path);
         if !repo_path.exists() {
-            return Err(crate::error::Error::index(format!("Path does not exist: {}", self.path)));
+            return Err(crate::error::Error::index(format!(
+                "Path does not exist: {}",
+                self.path
+            )));
         }
         if !repo_path.is_dir() {
-            return Err(crate::error::Error::index(format!("Path is not a directory: {}", self.path)));
+            return Err(crate::error::Error::index(format!(
+                "Path is not a directory: {}",
+                self.path
+            )));
         }
 
         let indexer = CodeIndexer::new(&self.language)?;
@@ -53,7 +59,9 @@ impl IndexCommand {
 
         // Handle empty repo
         if graph.files().is_empty() {
-            return Err(crate::error::Error::index("Empty repository or no readable files found"));
+            return Err(crate::error::Error::index(
+                "Empty repository or no readable files found",
+            ));
         }
 
         // Handle unsupported files (files present but no entities)
@@ -82,8 +90,11 @@ impl IndexCommand {
         fs::create_dir_all(out_dir)?;
         let out_file = out_dir.join("graph.json");
 
-        let f = fs::File::create(&out_file).map_err(|e| crate::error::Error::index(format!("Failed to create output file: {}", e)))?;
-        serde_json::to_writer_pretty(f, &graph).map_err(|e| crate::error::Error::index(format!("Failed to serialize graph: {}", e)))?;
+        let f = fs::File::create(&out_file).map_err(|e| {
+            crate::error::Error::index(format!("Failed to create output file: {}", e))
+        })?;
+        serde_json::to_writer_pretty(f, &graph)
+            .map_err(|e| crate::error::Error::index(format!("Failed to serialize graph: {}", e)))?;
 
         // Also write to provided output path (best-effort)
         if !self.output.is_empty() {
@@ -122,8 +133,8 @@ impl IndexCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::io::Write;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn successful_indexing_creates_graph() {
@@ -143,7 +154,7 @@ mod tests {
         let res = cmd.execute().await;
         assert!(res.is_ok());
         let out = std::fs::read_to_string("graphswarm_output/graph.json").unwrap();
-        assert!(out.contains("Entities" ) || out.len()>0);
+        assert!(out.contains("Entities") || out.len() > 0);
     }
 
     #[tokio::test]

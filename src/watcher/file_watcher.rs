@@ -21,8 +21,8 @@ use std::time::Duration;
 use notify_debouncer_mini::new_debouncer;
 use notify_debouncer_mini::notify::RecursiveMode;
 
+use super::{is_source_file, EventKind, FileEvent};
 use crate::error::{Error, Result};
-use super::{EventKind, FileEvent, is_source_file};
 
 /// Watches a directory tree and sends `FileEvent`s through the given channel.
 pub struct FileWatcher {
@@ -53,9 +53,7 @@ impl FileWatcher {
         debouncer
             .watcher()
             .watch(&self.root, RecursiveMode::Recursive)
-            .map_err(|e| {
-                Error::storage(format!("Failed to watch {}: {e}", self.root.display()))
-            })?;
+            .map_err(|e| Error::storage(format!("Failed to watch {}: {e}", self.root.display())))?;
 
         for result in raw_rx {
             match result {

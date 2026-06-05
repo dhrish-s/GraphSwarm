@@ -1,14 +1,14 @@
-pub mod parser;
 pub mod call_graph;
 pub mod extractor;
+pub mod parser;
 
-pub use parser::{CodeParser, Import};
 pub use call_graph::CallGraph;
 pub use extractor::{CodeEntity, EntityType};
+pub use parser::{CodeParser, Import};
 
 use crate::error::Result;
-use std::path::Path;
 use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Debug)]
 struct ImportResolution {
@@ -24,7 +24,9 @@ pub struct CodeIndexer {
 
 impl CodeIndexer {
     pub fn new(language: &str) -> Result<Self> {
-        Ok(Self { parser: CodeParser::new(language)? })
+        Ok(Self {
+            parser: CodeParser::new(language)?,
+        })
     }
 
     /// Index every source file under `path` and build a call graph with cross-file resolution.
@@ -68,7 +70,8 @@ impl CodeIndexer {
                     all_imports.extend(imports);
                 }
 
-                let mut module_path = p.strip_prefix(root)
+                let mut module_path = p
+                    .strip_prefix(root)
                     .unwrap_or(&p)
                     .with_extension("")
                     .to_string_lossy()
@@ -76,7 +79,8 @@ impl CodeIndexer {
 
                 if let Some(stem) = p.file_stem() {
                     if stem == "__init__" || stem == "mod" {
-                        module_path = p.strip_prefix(root)
+                        module_path = p
+                            .strip_prefix(root)
                             .unwrap_or(&p)
                             .parent()
                             .map(|parent| parent.to_string_lossy().to_string())
@@ -165,15 +169,24 @@ impl CodeIndexer {
 
         for entity in entities {
             for call_name in entity.calls.clone() {
-                if let Some(resolution) = import_map.get(&(entity.file_path.clone(), call_name.clone())) {
+                if let Some(resolution) =
+                    import_map.get(&(entity.file_path.clone(), call_name.clone()))
+                {
                     if let Some(target_id) = self.resolve_direct_import(symbol_table, resolution) {
                         graph.add_call(entity.id.clone(), target_id);
                     }
                 }
 
                 if let Some((prefix, separator)) = Self::extract_call_prefix(&call_name) {
-                    if let Some(resolution) = import_map.get(&(entity.file_path.clone(), prefix.to_string())) {
-                        if let Some(target_id) = self.resolve_qualified_import(symbol_table, resolution, &call_name, separator) {
+                    if let Some(resolution) =
+                        import_map.get(&(entity.file_path.clone(), prefix.to_string()))
+                    {
+                        if let Some(target_id) = self.resolve_qualified_import(
+                            symbol_table,
+                            resolution,
+                            &call_name,
+                            separator,
+                        ) {
                             graph.add_call(entity.id.clone(), target_id);
                         }
                     }
@@ -216,7 +229,10 @@ impl CodeIndexer {
         call_name: &str,
         separator: &str,
     ) -> Option<String> {
-        let segments: Vec<&str> = call_name.split(separator).filter(|s| !s.is_empty()).collect();
+        let segments: Vec<&str> = call_name
+            .split(separator)
+            .filter(|s| !s.is_empty())
+            .collect();
         if segments.len() < 2 || segments[0] != resolution.imported_name {
             return None;
         }
@@ -230,7 +246,10 @@ impl CodeIndexer {
         }
 
         let mut resolved_symbol = suffix_segments.last()?.to_string();
-        let module_segments: Vec<&str> = target_module.split(separator).filter(|s| !s.is_empty()).collect();
+        let module_segments: Vec<&str> = target_module
+            .split(separator)
+            .filter(|s| !s.is_empty())
+            .collect();
         let suffix: Vec<&str> = suffix_segments.to_vec();
 
         if module_segments.len() > 1 {
@@ -258,8 +277,8 @@ impl CodeIndexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::io::Write;
+    use tempfile::tempdir;
 
     #[test]
     fn create_indexer() {
@@ -293,7 +312,11 @@ mod tests {
         // checkout.py
         let file2 = dir.path().join("checkout.py");
         let mut f2 = std::fs::File::create(&file2).unwrap();
-        writeln!(f2, "from payment import process_payment\n\ndef checkout():\n    process_payment()\n").unwrap();
+        writeln!(
+            f2,
+            "from payment import process_payment\n\ndef checkout():\n    process_payment()\n"
+        )
+        .unwrap();
 
         let indexer = CodeIndexer::new("auto").unwrap();
         let graph = indexer.index_directory(dir.path()).unwrap();
@@ -335,13 +358,20 @@ mod tests {
 
         let file2 = dir.path().join("checkout.py");
         let mut f2 = std::fs::File::create(&file2).unwrap();
-        writeln!(f2, "import payment\n\ndef checkout():\n    payment.process_payment()\n").unwrap();
+        writeln!(
+            f2,
+            "import payment\n\ndef checkout():\n    payment.process_payment()\n"
+        )
+        .unwrap();
 
         let indexer = CodeIndexer::new("auto").unwrap();
         let graph = indexer.index_directory(dir.path()).unwrap();
 
         assert_eq!(graph.entity_count(), 2);
-        assert!(graph.edge_count() > 0, "Expected module-qualified imported call edge");
+        assert!(
+            graph.edge_count() > 0,
+            "Expected module-qualified imported call edge"
+        );
     }
 
     #[test]
@@ -360,7 +390,10 @@ mod tests {
         let graph = indexer.index_directory(dir.path()).unwrap();
 
         assert_eq!(graph.entity_count(), 2);
-        assert!(graph.edge_count() > 0, "Expected Rust use-import cross-file edge");
+        assert!(
+            graph.edge_count() > 0,
+            "Expected Rust use-import cross-file edge"
+        );
     }
 
     #[test]

@@ -8,10 +8,10 @@ async fn main() -> anyhow::Result<()> {
     setup_logging("info");
 
     match cli.command {
-        Commands::Index(cmd)   => cmd.execute().await?,
-        Commands::Query(cmd)   => cmd.execute().await?,
-        Commands::Server(cmd)  => cmd.execute().await?,
-        Commands::Export(cmd)  => cmd.execute().await?,
+        Commands::Index(cmd) => cmd.execute().await?,
+        Commands::Query(cmd) => cmd.execute().await?,
+        Commands::Server(cmd) => cmd.execute().await?,
+        Commands::Export(cmd) => cmd.execute().await?,
         Commands::Install(cmd) => cmd.execute().await?,
     }
 

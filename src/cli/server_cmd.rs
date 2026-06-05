@@ -1,8 +1,8 @@
-use clap::Args;
 use crate::error::Result;
 use crate::mcp::McpServer;
 use crate::storage::{GraphStore, KvBackend};
 use crate::watcher::{FileWatcher, Reconciler};
+use clap::Args;
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -23,8 +23,8 @@ pub struct ServerCommand {
 impl ServerCommand {
     pub async fn execute(&self) -> Result<()> {
         let repo_root = PathBuf::from(&self.path);
-        let db_path   = repo_root.join(".graphswarm").join("db");
-        let server    = McpServer::new(db_path.clone());
+        let db_path = repo_root.join(".graphswarm").join("db");
+        let server = McpServer::new(db_path.clone());
 
         if !self.watch {
             // Plain stdio MCP server (existing behavior).
@@ -56,8 +56,8 @@ impl ServerCommand {
         });
 
         // Reconciler is an async task.
-        let kv      = KvBackend::open(&db_path)?;
-        let store   = GraphStore::new(kv);
+        let kv = KvBackend::open(&db_path)?;
+        let store = GraphStore::new(kv);
         let reconciler = Reconciler::new(rx, store, repo_root);
         let reconciler_handle = tokio::spawn(async move { reconciler.run().await });
 

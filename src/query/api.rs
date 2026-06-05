@@ -19,23 +19,23 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use chrono::Utc;
 
+use super::mod_types::RelevantFile;
+use super::ranker::{build_reason, rank_files, ScoredEntity};
+use super::relevance::{docstring_score, graph_score, name_score, recency_score};
 use crate::error::Result;
 use crate::indexer::extractor::CodeEntity;
 use crate::storage::graph_queries::GraphStore;
 use crate::tracker::history::History;
-use super::mod_types::RelevantFile;
-use super::ranker::{build_reason, rank_files, ScoredEntity};
-use super::relevance::{docstring_score, graph_score, name_score, recency_score};
 
 /// Weights for the four relevance signals. Must sum to 1.0.
-const W_NAME:      f64 = 0.4;
-const W_GRAPH:     f64 = 0.3;
-const W_RECENCY:   f64 = 0.2;
+const W_NAME: f64 = 0.4;
+const W_GRAPH: f64 = 0.3;
+const W_RECENCY: f64 = 0.2;
 const W_DOCSTRING: f64 = 0.1;
 
 /// Public query interface for GraphSwarm.
 pub struct QueryEngine {
-    store:   GraphStore,
+    store: GraphStore,
     history: History,
 }
 
@@ -94,8 +94,12 @@ impl QueryEngine {
                 if score > 0.0 {
                     let distance = self.graph_distance_to_query(&entity, q);
                     let secs_ago = recency.get(&entity.file_path).copied();
-                    let reason   = build_reason(&entity, q, distance, secs_ago);
-                    scored.push(ScoredEntity { entity, score, reason });
+                    let reason = build_reason(&entity, q, distance, secs_ago);
+                    scored.push(ScoredEntity {
+                        entity,
+                        score,
+                        reason,
+                    });
                 }
             }
         }
@@ -106,9 +110,8 @@ impl QueryEngine {
         // re-indexed yet. The watcher marks files stale until reconciling finishes.
         for result in &mut results {
             if self.store.is_stale(&result.file_path).unwrap_or(false) {
-                result.stale_warning = Some(
-                    "File has pending changes -re-indexing in progress".to_string()
-                );
+                result.stale_warning =
+                    Some("File has pending changes -re-indexing in progress".to_string());
             }
         }
 
@@ -147,11 +150,15 @@ impl QueryEngine {
     /// Computes the combined relevance score for one entity.
     ///
     /// Final score = W_NAME*name + W_GRAPH*graph + W_RECENCY*recency + W_DOCSTRING*doc
-    fn score_entity(&self, entity: &CodeEntity, query: &str, recency: &HashMap<String, f64>) -> f64 {
+    fn score_entity(
+        &self,
+        entity: &CodeEntity,
+        query: &str,
+        recency: &HashMap<String, f64>,
+    ) -> f64 {
         // Signal 1: name match (weight 0.4)
         // We also score against file_path so "src" matches "src/auth.rs".
-        let s_name = name_score(&entity.name, query)
-            .max(name_score(&entity.file_path, query));
+        let s_name = name_score(&entity.name, query).max(name_score(&entity.file_path, query));
 
         // Signal 2: graph distance (weight 0.3)
         // O(degree) approximation; full BFS would be O(V*E) -too slow.
@@ -178,9 +185,7 @@ impl QueryEngine {
     /// Returns usize::MAX when no match is found → graph_score returns 0.0.
     fn approx_graph_distance(&self, entity: &CodeEntity, query: &str) -> usize {
         // Distance 0: does this entity itself match?
-        if name_score(&entity.name, query) > 0.0
-            || name_score(&entity.file_path, query) > 0.0
-        {
+        if name_score(&entity.name, query) > 0.0 || name_score(&entity.file_path, query) > 0.0 {
             return 0;
         }
 
@@ -216,7 +221,11 @@ impl QueryEngine {
     /// Returns the min graph distance to a name-matching node, or None if not nearby.
     fn graph_distance_to_query(&self, entity: &CodeEntity, query: &str) -> Option<usize> {
         let d = self.approx_graph_distance(entity, query);
-        if d == usize::MAX { None } else { Some(d) }
+        if d == usize::MAX {
+            None
+        } else {
+            Some(d)
+        }
     }
 
     /// BFS with parent tracking to reconstruct the actual call path from `from` to `to`.
@@ -272,37 +281,40 @@ mod tests {
     /// Standard 3-entity graph: main → authenticate_user → verify_token
     fn make_test_graph() -> CallGraph {
         let main_e = CodeEntity {
-            id:          "src/main.rs::main".into(),
-            name:        "main".into(),
+            id: "src/main.rs::main".into(),
+            name: "main".into(),
             entity_type: EntityType::Function,
-            file_path:   "src/main.rs".into(),
-            line_start:  1, line_end: 10,
-            language:    Language::Rust,
-            docstring:   Some("Entry point".into()),
-            calls:       vec!["src/auth.rs::authenticate_user".into()],
-            called_by:   vec![],
+            file_path: "src/main.rs".into(),
+            line_start: 1,
+            line_end: 10,
+            language: Language::Rust,
+            docstring: Some("Entry point".into()),
+            calls: vec!["src/auth.rs::authenticate_user".into()],
+            called_by: vec![],
         };
         let auth_e = CodeEntity {
-            id:          "src/auth.rs::authenticate_user".into(),
-            name:        "authenticate_user".into(),
+            id: "src/auth.rs::authenticate_user".into(),
+            name: "authenticate_user".into(),
             entity_type: EntityType::Function,
-            file_path:   "src/auth.rs".into(),
-            line_start:  5, line_end: 25,
-            language:    Language::Rust,
-            docstring:   Some("Authenticates a user by JWT token".into()),
-            calls:       vec!["src/auth.rs::verify_token".into()],
-            called_by:   vec!["src/main.rs::main".into()],
+            file_path: "src/auth.rs".into(),
+            line_start: 5,
+            line_end: 25,
+            language: Language::Rust,
+            docstring: Some("Authenticates a user by JWT token".into()),
+            calls: vec!["src/auth.rs::verify_token".into()],
+            called_by: vec!["src/main.rs::main".into()],
         };
         let verify_e = CodeEntity {
-            id:          "src/auth.rs::verify_token".into(),
-            name:        "verify_token".into(),
+            id: "src/auth.rs::verify_token".into(),
+            name: "verify_token".into(),
             entity_type: EntityType::Function,
-            file_path:   "src/auth.rs".into(),
-            line_start:  30, line_end: 45,
-            language:    Language::Rust,
-            docstring:   None,
-            calls:       vec![],
-            called_by:   vec!["src/auth.rs::authenticate_user".into()],
+            file_path: "src/auth.rs".into(),
+            line_start: 30,
+            line_end: 45,
+            language: Language::Rust,
+            docstring: None,
+            calls: vec![],
+            called_by: vec!["src/auth.rs::authenticate_user".into()],
         };
 
         let mut graph = CallGraph::new();
@@ -310,8 +322,14 @@ mod tests {
         graph.add_entity(main_e);
         graph.add_entity(auth_e);
         graph.add_entity(verify_e);
-        graph.add_call("src/main.rs::main".into(), "src/auth.rs::authenticate_user".into());
-        graph.add_call("src/auth.rs::authenticate_user".into(), "src/auth.rs::verify_token".into());
+        graph.add_call(
+            "src/main.rs::main".into(),
+            "src/auth.rs::authenticate_user".into(),
+        );
+        graph.add_call(
+            "src/auth.rs::authenticate_user".into(),
+            "src/auth.rs::verify_token".into(),
+        );
         graph
     }
 
@@ -388,8 +406,10 @@ mod tests {
         let (engine, _dir) = make_test_engine();
         let results = engine.query("authenticate", 10).unwrap();
         for w in results.windows(2) {
-            assert!(w[0].relevance_score >= w[1].relevance_score,
-                "scores must be non-increasing");
+            assert!(
+                w[0].relevance_score >= w[1].relevance_score,
+                "scores must be non-increasing"
+            );
         }
     }
 
@@ -398,8 +418,11 @@ mod tests {
         let (engine, _dir) = make_test_engine();
         let results = engine.query("authenticate", 10).unwrap();
         for r in &results {
-            assert!(r.relevance_score >= 0.0 && r.relevance_score <= 1.0,
-                "score out of range: {}", r.relevance_score);
+            assert!(
+                r.relevance_score >= 0.0 && r.relevance_score <= 1.0,
+                "score out of range: {}",
+                r.relevance_score
+            );
         }
     }
 
@@ -417,8 +440,11 @@ mod tests {
         let (engine, _dir) = make_test_engine();
         let results = engine.query("authenticate", 10).unwrap();
         for r in &results {
-            assert!(!r.entities.is_empty(),
-                "{} has empty entities list", r.file_path);
+            assert!(
+                !r.entities.is_empty(),
+                "{} has empty entities list",
+                r.file_path
+            );
         }
     }
 
@@ -450,24 +476,30 @@ mod tests {
     #[test]
     fn path_connected_entities_returns_non_empty() {
         let (engine, _dir) = make_test_engine();
-        let p = engine.path("src/main.rs::main", "src/auth.rs::verify_token").unwrap();
+        let p = engine
+            .path("src/main.rs::main", "src/auth.rs::verify_token")
+            .unwrap();
         assert!(!p.is_empty());
     }
 
     #[test]
     fn path_includes_start_and_end() {
         let (engine, _dir) = make_test_engine();
-        let p = engine.path("src/main.rs::main", "src/auth.rs::authenticate_user").unwrap();
+        let p = engine
+            .path("src/main.rs::main", "src/auth.rs::authenticate_user")
+            .unwrap();
         assert!(!p.is_empty());
         assert_eq!(p.first().unwrap(), "src/main.rs::main");
-        assert_eq!(p.last().unwrap(),  "src/auth.rs::authenticate_user");
+        assert_eq!(p.last().unwrap(), "src/auth.rs::authenticate_user");
     }
 
     #[test]
     fn path_unconnected_entities_returns_empty() {
         let (engine, _dir) = make_test_engine();
         // verify_token does not call main -reverse direction has no path
-        let p = engine.path("src/auth.rs::verify_token", "src/main.rs::main").unwrap();
+        let p = engine
+            .path("src/auth.rs::verify_token", "src/main.rs::main")
+            .unwrap();
         assert!(p.is_empty());
     }
 }

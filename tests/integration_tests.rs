@@ -7,8 +7,8 @@ use std::io::Write;
 use tempfile::TempDir;
 
 use graphswarm::indexer::CodeIndexer;
-use graphswarm::mcp::server::McpServer;
 use graphswarm::mcp::protocol::McpRequest;
+use graphswarm::mcp::server::McpServer;
 use graphswarm::query::QueryEngine;
 use graphswarm::storage::{GraphStore, KvBackend};
 use graphswarm::tracker::History;
@@ -16,9 +16,9 @@ use graphswarm::tracker::History;
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn make_engine(dir: &TempDir) -> (QueryEngine, GraphStore) {
-    let kv    = KvBackend::open(dir.path()).unwrap();
+    let kv = KvBackend::open(dir.path()).unwrap();
     let store = GraphStore::new(kv.clone());
-    let hist  = History::new(kv);
+    let hist = History::new(kv);
     let engine = QueryEngine::new(store.clone(), hist);
     (engine, store)
 }
@@ -37,17 +37,18 @@ fn integration_index_and_query_rust_files() {
     let dir = TempDir::new().unwrap();
 
     // Write 3 Rust files with known relationships:  main → auth → db
-    write_file(&dir, "main.rs",
-        "fn main() { authenticate(); }\nfn authenticate() {}\n");
-    write_file(&dir, "auth.rs",
-        "fn authenticate_user() { db_query(); }\n");
-    write_file(&dir, "db.rs",
-        "fn db_query() {}\n");
+    write_file(
+        &dir,
+        "main.rs",
+        "fn main() { authenticate(); }\nfn authenticate() {}\n",
+    );
+    write_file(&dir, "auth.rs", "fn authenticate_user() { db_query(); }\n");
+    write_file(&dir, "db.rs", "fn db_query() {}\n");
 
     let indexer = CodeIndexer::new("auto").unwrap();
-    let graph   = indexer.index_directory(dir.path()).unwrap();
+    let graph = indexer.index_directory(dir.path()).unwrap();
 
-    let kv    = KvBackend::open(&dir.path().join("db")).unwrap();
+    let kv = KvBackend::open(&dir.path().join("db")).unwrap();
     let store = GraphStore::new(kv.clone());
     store.store_graph(&graph).unwrap();
 
@@ -56,7 +57,11 @@ fn integration_index_and_query_rust_files() {
 
     assert!(!results.is_empty(), "expected results for 'authenticate'");
     // auth.rs should be in the top 3 results
-    let top3_paths: Vec<&str> = results.iter().take(3).map(|r| r.file_path.as_str()).collect();
+    let top3_paths: Vec<&str> = results
+        .iter()
+        .take(3)
+        .map(|r| r.file_path.as_str())
+        .collect();
     let auth_path = dir.path().join("auth.rs").to_string_lossy().to_string();
     assert!(
         top3_paths.iter().any(|p| p.contains("auth")),
@@ -65,8 +70,11 @@ fn integration_index_and_query_rust_files() {
 
     // All scores must be in [0, 1]
     for r in &results {
-        assert!(r.relevance_score >= 0.0 && r.relevance_score <= 1.0,
-            "score out of range: {}", r.relevance_score);
+        assert!(
+            r.relevance_score >= 0.0 && r.relevance_score <= 1.0,
+            "score out of range: {}",
+            r.relevance_score
+        );
     }
     let _ = auth_path;
 }
@@ -75,10 +83,13 @@ fn integration_index_and_query_rust_files() {
 
 #[test]
 fn integration_caller_chain_traversal() {
-    use graphswarm::indexer::{call_graph::CallGraph, extractor::{CodeEntity, EntityType, Language}};
+    use graphswarm::indexer::{
+        call_graph::CallGraph,
+        extractor::{CodeEntity, EntityType, Language},
+    };
 
     let dir = TempDir::new().unwrap();
-    let kv  = KvBackend::open(dir.path()).unwrap();
+    let kv = KvBackend::open(dir.path()).unwrap();
 
     // Build graph: A → B → C
     let mut graph = CallGraph::new();
@@ -86,12 +97,16 @@ fn integration_caller_chain_traversal() {
     for (id, calls, called_by) in [
         ("file.rs::a", vec!["file.rs::b"], vec![]),
         ("file.rs::b", vec!["file.rs::c"], vec!["file.rs::a"]),
-        ("file.rs::c", vec![],             vec!["file.rs::b"]),
+        ("file.rs::c", vec![], vec!["file.rs::b"]),
     ] {
         graph.add_entity(CodeEntity {
-            id: id.into(), name: id.split("::").last().unwrap().to_string(),
-            entity_type: EntityType::Function, file_path: "file.rs".into(),
-            line_start: 1, line_end: 5, language: Language::Rust,
+            id: id.into(),
+            name: id.split("::").last().unwrap().to_string(),
+            entity_type: EntityType::Function,
+            file_path: "file.rs".into(),
+            line_start: 1,
+            line_end: 5,
+            language: Language::Rust,
             docstring: None,
             calls: calls.iter().map(|s| s.to_string()).collect(),
             called_by: called_by.iter().map(|s| s.to_string()).collect(),
@@ -123,10 +138,13 @@ fn integration_caller_chain_traversal() {
 
 #[test]
 fn integration_delete_file_cascade() {
-    use graphswarm::indexer::{call_graph::CallGraph, extractor::{CodeEntity, EntityType, Language}};
+    use graphswarm::indexer::{
+        call_graph::CallGraph,
+        extractor::{CodeEntity, EntityType, Language},
+    };
 
-    let dir   = TempDir::new().unwrap();
-    let kv    = KvBackend::open(dir.path()).unwrap();
+    let dir = TempDir::new().unwrap();
+    let kv = KvBackend::open(dir.path()).unwrap();
     let store = GraphStore::new(kv);
 
     let mut graph = CallGraph::new();
@@ -139,9 +157,13 @@ fn integration_delete_file_cascade() {
         ("db.rs::query", "db.rs", vec![]),
     ] {
         graph.add_entity(CodeEntity {
-            id: id.into(), name: id.split("::").last().unwrap().to_string(),
-            entity_type: EntityType::Function, file_path: file.into(),
-            line_start: 1, line_end: 5, language: Language::Rust,
+            id: id.into(),
+            name: id.split("::").last().unwrap().to_string(),
+            entity_type: EntityType::Function,
+            file_path: file.into(),
+            line_start: 1,
+            line_end: 5,
+            language: Language::Rust,
             docstring: None,
             calls: calls.iter().map(|s| s.to_string()).collect(),
             called_by: vec![],
@@ -160,18 +182,24 @@ fn integration_delete_file_cascade() {
     // main.rs::run's callees list should no longer contain auth.rs::login
     let callees_of_run = store.find_callees("main.rs::run").unwrap();
     let has_auth = callees_of_run.iter().any(|e| e.id == "auth.rs::login");
-    assert!(!has_auth, "auth.rs::login should be removed from main.rs::run's callees");
+    assert!(
+        !has_auth,
+        "auth.rs::login should be removed from main.rs::run's callees"
+    );
 }
 
 // ── Test 4: MCP tools/call query_graph round-trip ────────────────────────────
 
 #[test]
 fn integration_mcp_tools_call_roundtrip() {
-    use graphswarm::indexer::{call_graph::CallGraph, extractor::{CodeEntity, EntityType, Language}};
+    use graphswarm::indexer::{
+        call_graph::CallGraph,
+        extractor::{CodeEntity, EntityType, Language},
+    };
     use graphswarm::mcp::tools::GraphSwarmState;
 
-    let dir   = TempDir::new().unwrap();
-    let kv    = KvBackend::open(dir.path()).unwrap();
+    let dir = TempDir::new().unwrap();
+    let kv = KvBackend::open(dir.path()).unwrap();
     let store = GraphStore::new(kv.clone());
 
     let mut graph = CallGraph::new();
@@ -181,15 +209,17 @@ fn integration_mcp_tools_call_roundtrip() {
         name: "authenticate_user".into(),
         entity_type: EntityType::Function,
         file_path: "src/auth.rs".into(),
-        line_start: 1, line_end: 10,
+        line_start: 1,
+        line_end: 10,
         language: Language::Rust,
         docstring: Some("Authenticates a user".into()),
-        calls: vec![], called_by: vec![],
+        calls: vec![],
+        called_by: vec![],
     });
     store.store_graph(&graph).unwrap();
 
     let engine = QueryEngine::new(store, History::new(kv));
-    let state  = GraphSwarmState { engine };
+    let state = GraphSwarmState { engine };
     let server = McpServer::new(dir.path().join("db"));
 
     let req = McpRequest {
@@ -216,7 +246,7 @@ fn integration_mcp_tools_call_roundtrip() {
 
 #[test]
 fn integration_mcp_tools_list() {
-    let dir    = TempDir::new().unwrap();
+    let dir = TempDir::new().unwrap();
     let server = McpServer::new(dir.path().join("db"));
 
     let req = McpRequest {
@@ -243,10 +273,13 @@ fn integration_mcp_tools_list() {
 
 #[test]
 fn integration_stale_flag_round_trip() {
-    use graphswarm::indexer::{call_graph::CallGraph, extractor::{CodeEntity, EntityType, Language}};
+    use graphswarm::indexer::{
+        call_graph::CallGraph,
+        extractor::{CodeEntity, EntityType, Language},
+    };
 
-    let dir   = TempDir::new().unwrap();
-    let kv    = KvBackend::open(dir.path()).unwrap();
+    let dir = TempDir::new().unwrap();
+    let kv = KvBackend::open(dir.path()).unwrap();
     let store = GraphStore::new(kv.clone());
 
     let mut graph = CallGraph::new();
@@ -256,9 +289,12 @@ fn integration_stale_flag_round_trip() {
         name: "authenticate".into(),
         entity_type: EntityType::Function,
         file_path: "src/auth.rs".into(),
-        line_start: 1, line_end: 5,
+        line_start: 1,
+        line_end: 5,
         language: Language::Rust,
-        docstring: None, calls: vec![], called_by: vec![],
+        docstring: None,
+        calls: vec![],
+        called_by: vec![],
     });
     store.store_graph(&graph).unwrap();
 
@@ -266,20 +302,30 @@ fn integration_stale_flag_round_trip() {
     store.mark_stale("src/auth.rs").unwrap();
 
     // Query -stale_warning must be Some
-    let engine  = QueryEngine::new(store.clone(), History::new(kv.clone()));
+    let engine = QueryEngine::new(store.clone(), History::new(kv.clone()));
     let results = engine.query("authenticate", 5).unwrap();
     assert!(!results.is_empty());
-    let auth_result = results.iter().find(|r| r.file_path.contains("auth")).unwrap();
-    assert!(auth_result.stale_warning.is_some(),
-        "expected stale_warning, got None");
+    let auth_result = results
+        .iter()
+        .find(|r| r.file_path.contains("auth"))
+        .unwrap();
+    assert!(
+        auth_result.stale_warning.is_some(),
+        "expected stale_warning, got None"
+    );
 
     // Clear stale
     store.clear_stale("src/auth.rs").unwrap();
 
     // Query again -stale_warning must be None
-    let engine2  = QueryEngine::new(store, History::new(kv));
+    let engine2 = QueryEngine::new(store, History::new(kv));
     let results2 = engine2.query("authenticate", 5).unwrap();
-    let auth2 = results2.iter().find(|r| r.file_path.contains("auth")).unwrap();
-    assert!(auth2.stale_warning.is_none(),
-        "expected no stale_warning after clear, got Some");
+    let auth2 = results2
+        .iter()
+        .find(|r| r.file_path.contains("auth"))
+        .unwrap();
+    assert!(
+        auth2.stale_warning.is_none(),
+        "expected no stale_warning after clear, got Some"
+    );
 }

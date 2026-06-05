@@ -31,11 +31,11 @@ pub enum ActionType {
 impl std::fmt::Display for ActionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ActionType::FileRead     => write!(f, "file_read"),
-            ActionType::FileEdit     => write!(f, "file_edit"),
+            ActionType::FileRead => write!(f, "file_read"),
+            ActionType::FileEdit => write!(f, "file_edit"),
             ActionType::FunctionCall => write!(f, "function_call"),
-            ActionType::TestRun      => write!(f, "test_run"),
-            ActionType::Error        => write!(f, "error"),
+            ActionType::TestRun => write!(f, "test_run"),
+            ActionType::Error => write!(f, "error"),
         }
     }
 }
@@ -151,9 +151,12 @@ mod tests {
 
     #[test]
     fn with_entity_sets_entity_id() {
-        let action = AgentAction::new(ActionType::FileRead, "a.rs")
-            .with_entity("src/auth.rs::authenticate");
-        assert_eq!(action.entity_id.as_deref(), Some("src/auth.rs::authenticate"));
+        let action =
+            AgentAction::new(ActionType::FileRead, "a.rs").with_entity("src/auth.rs::authenticate");
+        assert_eq!(
+            action.entity_id.as_deref(),
+            Some("src/auth.rs::authenticate")
+        );
     }
 
     #[test]
@@ -183,10 +186,10 @@ mod tests {
 
     #[test]
     fn is_error_false_for_non_error_types() {
-        assert!(!AgentAction::new(ActionType::FileRead,     "x.rs").is_error());
-        assert!(!AgentAction::new(ActionType::FileEdit,     "x.rs").is_error());
+        assert!(!AgentAction::new(ActionType::FileRead, "x.rs").is_error());
+        assert!(!AgentAction::new(ActionType::FileEdit, "x.rs").is_error());
         assert!(!AgentAction::new(ActionType::FunctionCall, "x.rs").is_error());
-        assert!(!AgentAction::new(ActionType::TestRun,      "x.rs").is_error());
+        assert!(!AgentAction::new(ActionType::TestRun, "x.rs").is_error());
     }
 
     #[test]
@@ -214,11 +217,11 @@ mod tests {
 
     #[test]
     fn action_type_display() {
-        assert_eq!(format!("{}", ActionType::FileRead),     "file_read");
-        assert_eq!(format!("{}", ActionType::FileEdit),     "file_edit");
+        assert_eq!(format!("{}", ActionType::FileRead), "file_read");
+        assert_eq!(format!("{}", ActionType::FileEdit), "file_edit");
         assert_eq!(format!("{}", ActionType::FunctionCall), "function_call");
-        assert_eq!(format!("{}", ActionType::TestRun),      "test_run");
-        assert_eq!(format!("{}", ActionType::Error),        "error");
+        assert_eq!(format!("{}", ActionType::TestRun), "test_run");
+        assert_eq!(format!("{}", ActionType::Error), "error");
     }
 
     #[test]
@@ -236,28 +239,28 @@ mod tests {
         let action = AgentAction::new(ActionType::FunctionCall, "src/lib.rs")
             .with_entity("src/lib.rs::my_fn")
             .with_metadata("context_window", serde_json::json!(4096))
-            .with_metadata("duration_ms",    serde_json::json!(12));
+            .with_metadata("duration_ms", serde_json::json!(12));
         let json = serde_json::to_string(&action).unwrap();
         let decoded: AgentAction = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.entity_id.as_deref(), Some("src/lib.rs::my_fn"));
         assert_eq!(decoded.metadata["context_window"], serde_json::json!(4096));
-        assert_eq!(decoded.metadata["duration_ms"],    serde_json::json!(12));
+        assert_eq!(decoded.metadata["duration_ms"], serde_json::json!(12));
     }
 
     #[test]
     fn metadata_stores_json_value() {
         let action = AgentAction::new(ActionType::TestRun, "tests/main_test.rs")
             .with_metadata("passed", serde_json::json!(true))
-            .with_metadata("count",  serde_json::json!(42));
+            .with_metadata("count", serde_json::json!(42));
         assert_eq!(action.metadata["passed"], serde_json::json!(true));
-        assert_eq!(action.metadata["count"],  serde_json::json!(42));
+        assert_eq!(action.metadata["count"], serde_json::json!(42));
     }
 
     #[test]
     fn file_access_count_json_roundtrip() {
         let fac = FileAccessCount {
-            file_path:     "src/auth.rs".into(),
-            count:         7,
+            file_path: "src/auth.rs".into(),
+            count: 7,
             last_accessed: Utc::now(),
         };
         let json = serde_json::to_string(&fac).unwrap();

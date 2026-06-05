@@ -146,7 +146,10 @@ mod tests {
 
     #[test]
     fn entity_key_format() {
-        assert_eq!(entity_key("src/auth.rs::login"), "entity:src/auth.rs::login");
+        assert_eq!(
+            entity_key("src/auth.rs::login"),
+            "entity:src/auth.rs::login"
+        );
         assert!(entity_key("x").starts_with("entity:"));
     }
 
@@ -213,8 +216,11 @@ mod tests {
     fn history_recent_key_is_time_ordered() {
         // Earlier RFC3339 timestamp → lexicographically smaller key
         let earlier = history_recent_key("2025-06-01T10:00:00Z", "uuid-a");
-        let later   = history_recent_key("2025-06-01T11:00:00Z", "uuid-b");
-        assert!(earlier < later, "history:recent keys must sort chronologically");
+        let later = history_recent_key("2025-06-01T11:00:00Z", "uuid-b");
+        assert!(
+            earlier < later,
+            "history:recent keys must sort chronologically"
+        );
     }
 
     #[test]
