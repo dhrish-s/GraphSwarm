@@ -19,4 +19,5 @@ graphswarm-out/
 graphswarm_output/
 target/criterion/
 Thumbs.db
-*.tmp
+*.tmp.graphswarm_db/ 
+**/.graphswarm_db/ 
