@@ -1,12 +1,12 @@
 # GraphSwarm
 
-**Graph-aware persistent call graph for AI coding agents — index once, query in milliseconds.**
+**Persistent call graph for AI coding agents — index once, query in milliseconds over MCP.**
 
 ---
 
 ## What It Does
 
-GraphSwarm reads your source files using tree-sitter, extracts every function, class, method, and import as a `CodeEntity`, detects call relationships, and stores a bidirectional `CallGraph` in an embedded sled KV store with no external database required. A query engine scores files against natural language queries using four weighted signals — name match, graph distance, recency, and docstring coverage — and returns ranked results with explanations. A file watcher keeps the graph in sync automatically, re-indexing only the files that changed and marking stale results so agents always know when data is fresh. An MCP (Model Context Protocol) server exposes the full graph over stdio JSON-RPC 2.0, giving AI agents five queryable tools they can call without any configuration.
+GraphSwarm reads your source files using tree-sitter, extracts every function, class, method, and import as a `CodeEntity`, detects call relationships, and stores a bidirectional `CallGraph` in a persistent sled KV store with no external database required. A four-signal query engine scores every entity against natural language queries using name match, graph distance, recency, and docstring coverage, then returns ranked files with scores and explanations. A file watcher keeps the graph current automatically, re-indexing only the files that changed within 500ms of a save and marking stale results so agents know when data is momentarily out of date. An MCP server exposes the full graph over stdio JSON-RPC 2.0, giving agents five queryable tools with no port configuration, no authentication, and no external processes to manage.
 
 ---
 
@@ -14,167 +14,218 @@ GraphSwarm reads your source files using tree-sitter, extracts every function, c
 
 ```bash
 git clone https://github.com/dhrish-s/graphswarm
-cd graphswarm
+cd GraphSwarm
 cargo build --release
 ```
 
-The binary is at `target/release/graphswarm` (7.3 MB, self-contained, no runtime dependencies).
+| Platform | Binary path |
+|---|---|
+| Windows | `target\release\graphswarm.exe` |
+| Linux / Mac | `target/release/graphswarm` |
+
+Verify the build:
 
 ```bash
+# Windows
+target\release\graphswarm.exe --help
+
+# Linux / Mac
 ./target/release/graphswarm --help
 ```
+
+The binary is self-contained (7.3 MB) with no runtime dependencies.
 
 ---
 
 ## Quickstart
 
-**Step 1 — Index your project**
+### Step 1 — Index your project
 
 ```bash
-graphswarm index ./your-project
+# Windows
+target\release\graphswarm.exe index .\src
+
+# Linux / Mac
+./target/release/graphswarm index ./src
 ```
 
-This parses all `.rs`, `.py`, `.js`, and `.ts` files, extracts entities and call edges, and persists the call graph to `.graphswarm_db/` in the project root. Re-run after significant changes.
+The call graph is written to `<path>/.graphswarm/db/`. Run this once after cloning, then again after significant refactors.
 
-**Step 2 — Query the graph**
+### Step 2 — Query the graph
 
 ```bash
-# Natural language — returns ranked files with scores and reasons
-graphswarm query "authentication flow"
+# Windows
+target\release\graphswarm.exe query "authentication flow"
+target\release\graphswarm.exe query "storage layer"
+target\release\graphswarm.exe query "error handling"
 
-# Structured graph queries
-graphswarm query callers src/auth.rs::authenticate_user
-graphswarm query bfs src/main.rs::main 3
+# Linux / Mac
+./target/release/graphswarm query "authentication flow"
+./target/release/graphswarm query "storage layer"
+./target/release/graphswarm query "error handling"
 ```
 
-**Step 3 — Export a visual graph**
+Returns ranked files with relevance scores (0.0–1.0), matched entity names, and a human-readable reason string explaining which signals fired.
+
+### Step 3 — Export a visual graph
 
 ```bash
-graphswarm export
+# Windows
+target\release\graphswarm.exe export .\src
+
+# Linux / Mac
+./target/release/graphswarm export ./src
 ```
 
-Opens `graphswarm-out/graph.html` in any browser for an interactive force-directed visualization. D3.js is bundled inline — the graph renders with no internet connection.
+Writes three files to `graphswarm-out/`:
 
-**Step 4 — Install the skill file for your AI coding tool**
+- `graph.html` — interactive force-directed visualization (D3.js v7.9.0 bundled inline, works fully offline, no CDN required)
+- `graph.json` — full serialized `CallGraph` for machine consumption
+- `GRAPH_REPORT.md` — god nodes, largest files, cross-module edges, suggested queries
+
+### Step 4 — Install the skill file
 
 ```bash
-graphswarm install                      # writes to ~/.claude/skills/graphswarm/
-graphswarm install --project .          # writes to .claude/skills/graphswarm/ in the current project
-graphswarm install --platform cursor    # writes .cursor/rules/graphswarm.mdc
-graphswarm install --platform all       # installs for Claude Code, Cursor, and Codex
+# Windows — install to current project directory
+target\release\graphswarm.exe install --project .
+
+# Windows — install to home directory
+target\release\graphswarm.exe install
+
+# Linux / Mac — install to current project directory
+./target/release/graphswarm install --project .
+
+# Linux / Mac — install to home directory
+./target/release/graphswarm install
 ```
 
-The skill file tells the AI agent to query GraphSwarm before answering questions about the codebase.
+`--project .` writes to `.claude/skills/graphswarm/` inside the current directory. Without the flag, writes to `~/.claude/skills/graphswarm/`. The skill file instructs the AI agent to query GraphSwarm before answering questions about the codebase.
 
-**Step 5 — Start the MCP server**
+### Step 5 — Start the MCP server
+
+Static mode (re-run `index` manually when code changes):
 
 ```bash
-graphswarm server             # stdio MCP server, static graph
-graphswarm server --watch     # same, plus live file watcher
+# Windows
+target\release\graphswarm.exe server
+
+# Linux / Mac
+./target/release/graphswarm server
 ```
 
-With `--watch`, the reconciler runs in the background and updates the graph within seconds of a file save. AI agents receive a `stale_warning` in query results during the brief re-indexing window.
+With file watcher (graph auto-updates within 5 seconds of any file save):
+
+```bash
+# Windows
+target\release\graphswarm.exe server --watch
+
+# Linux / Mac
+./target/release/graphswarm server --watch
+```
 
 ---
 
 ## MCP Tools
 
-The MCP server exposes five tools via JSON-RPC 2.0 over stdio.
+The server exposes five tools over JSON-RPC 2.0. Entity IDs use the format `file_path::entity_name`, for example `src/auth.rs::authenticate_user`.
 
-| Tool | Description | Parameters |
-|---|---|---|
-| `query_graph` | Rank files by relevance to a natural language query | `query: string`, `top_k: int` (default 10) |
-| `get_callers` | Find every entity that directly calls the given entity | `entity_id: string` |
-| `get_callees` | Find every entity the given entity directly calls | `entity_id: string` |
-| `shortest_path` | Return the shortest call chain between two entities | `from: string`, `to: string` |
-| `explain_entity` | Return full details for one entity (type, file, lines, docstring, calls, callers) | `entity_id: string` |
-
-Entity IDs follow the format `file_path::entity_name`, for example `src/auth.rs::authenticate_user`.
+| Tool | Description | Required params | Optional params | Returns |
+|---|---|---|---|---|
+| `query_graph` | Natural language query → ranked relevant files | `query` (string) | `top_k` (int, default 10, max 20) | Ranked list of files with `relevance_score`, `reason`, `entities`, and `stale_warning` if the file has pending watcher changes |
+| `get_callers` | Find all entities that call a given entity | `entity_id` (string) | — | List of caller entity IDs and names |
+| `get_callees` | Find all entities that a given entity calls | `entity_id` (string) | — | List of callee entity IDs and names |
+| `shortest_path` | Find the shortest call chain between two entities | `from` (string), `to` (string) | — | Ordered list of entity IDs forming the call chain |
+| `explain_entity` | Full details for one entity | `entity_id` (string) | — | Complete `CodeEntity` with type, file, line range, docstring, callers, and callees |
 
 ---
 
 ## Relevance Scoring
 
-Each file is scored against a query using four signals combined with fixed weights:
+Each query is scored against every entity in the graph using four signals with fixed weights:
 
 ```
-relevance(file, query) =
-    0.4 × name_score      — token match between query tokens and entity name
-  + 0.3 × graph_score     — call graph distance, exponential decay (1.0 / 0.7 / 0.4 / 0.2 / 0.0)
-  + 0.2 × recency_score   — half-life decay at 3 600 s using real access timestamps
-  + 0.1 × docstring_score — token match in entity docstring
+relevance = 0.4 × name_score      (token match between query tokens and entity name)
+          + 0.3 × graph_score     (call graph distance, exponential decay)
+          + 0.2 × recency_score   (half-life decay using real access timestamps)
+          + 0.1 × docstring_score (token match in entity docstring)
 ```
 
-Every signal is in `[0.0, 1.0]`. Tokens are lowercased and split on whitespace, underscores, hyphens, colons, dots, and slashes, so `"authenticate user"` matches `authenticate_user` naturally.
+All signals are in `[0.0, 1.0]`. Tokens are lowercased and split on whitespace, underscores, hyphens, colons, dots, and slashes, so `"authenticate user"` matches `authenticate_user`.
 
-The per-file score is the **maximum** entity score within that file, not the average. A file with one highly relevant function and nine unrelated ones is correctly surfaced at the top, not buried by the average.
+**Graph distance decay:**
 
-If the file watcher has detected a change that has not yet been reconciled, the result includes a `stale_warning` field indicating that the data may be slightly out of date.
+| Distance | Score |
+|---|---|
+| 0 — exact entity match | 1.0 |
+| 1 — direct neighbor | 0.7 |
+| 2 — neighbor's neighbor | 0.4 |
+| 3+ | 0.0 |
+
+**Per-file score** is the maximum entity score within that file, not the average. A file containing one highly relevant function and nine unrelated ones ranks correctly near the top rather than being buried by its average.
+
+**`stale_warning`** appears in `query_graph` results when the file watcher has detected a change that has not yet been re-indexed. Agents can use this field to decide whether to re-run the query after a brief wait.
 
 ---
 
 ## File Watcher
 
-Start the server with `--watch` to enable incremental graph updates:
+The watcher uses the `notify` crate with a **500ms debounce window**. On `server --watch`, a `FileWatcher` thread monitors the entire repository root for changes to `.rs`, `.py`, `.js`, `.ts`, and `.tsx` files, converts OS-level events to typed `FileEvent` values, and forwards them to a `Reconciler` task over a Tokio mpsc channel. Only changed files are re-indexed — the rest of the graph is untouched.
 
-```bash
-graphswarm server --watch
-```
+Each event type triggers a specific reconcile sequence. For **modified** and **created** files: the file is marked stale, its existing entities are deleted with full edge cascade, the file is re-parsed, the new entities are stored, and the stale flag is cleared. For **deleted** files: the file is marked stale and all its entities and cross-references are permanently removed from the graph. For **renamed** files: the old path is treated as deleted and the new path is indexed as created.
 
-The watcher uses the `notify` crate with a **500 ms debounce window**. Editors typically perform multiple write operations (write to temp, rename to target) when saving; the debounce window lets those operations complete before re-indexing begins, avoiding partial reads.
-
-The reconciler handles four event types: **modified**, **created**, **deleted**, and **renamed**. For modifications and creations it marks the file stale, deletes its existing entities with full edge cascade, re-parses the file, stores the new entities, then clears the stale flag. For deletions it marks the file stale and removes entities permanently. Only the changed file is re-parsed — the rest of the graph is untouched.
-
-`impact_subtree()` uses reverse BFS to identify all files that transitively call into the changed file. These can be queued for re-indexing in a future pass if cross-file edge accuracy is required. The graph is typically updated within five seconds of a file save. During the re-indexing window, query results include a `stale_warning` so agents can factor freshness into their reasoning.
+When a file changes, `impact_subtree()` uses reverse BFS to identify every file that transitively calls into the changed file. These are the files whose call edges may now be stale. The current reconciler re-indexes the changed file immediately; the impact subtree is available for a future pass if cross-file edge accuracy is required. This keeps incremental updates fast even on large repositories because only the affected portion of the graph is touched.
 
 ---
 
 ## Supported Languages
 
-| Language | Extracted entities |
-|---|---|
-| Rust | functions, `impl` methods, `struct` / `trait` declarations, `use` imports |
-| Python | functions, classes, methods, `import` / `from … import` statements |
-| JavaScript | function declarations, arrow functions, classes, methods, ES module imports |
-| TypeScript | same as JavaScript plus type-annotated constructs |
-
-Go support is planned for Phase 7 — the `Language::Go` variant exists in the enum and the extension mapping is reserved.
+| Language | Extensions | Extracts |
+|---|---|---|
+| Rust | `.rs` | functions, structs, impl methods, traits, `use` imports |
+| Python | `.py` | functions, classes, methods, `import` / `from … import` statements |
+| JavaScript | `.js` `.jsx` `.mjs` | function declarations, arrow functions, classes, methods, ES module imports |
+| TypeScript | `.ts` `.tsx` `.mts` | same as JavaScript plus type-annotated constructs |
+| Go | `.go` | planned — enum variant exists, parser not yet active |
 
 ---
 
 ## KV Schema
 
-All keys live in a single sled B-tree. Paths containing `/` or `\` are encoded with `|` to avoid key hierarchy ambiguity.
+All data lives in a single sled B-tree at `<repo_root>/.graphswarm/db/`. Path separators and special characters are encoded with `|` to avoid key hierarchy collisions.
 
 ```
-entity:{entity_id}               → JSON CodeEntity
-callers:{entity_id}              → JSON Vec<String>   (reverse edges, pre-computed)
-callees:{entity_id}              → JSON Vec<String>   (forward edges)
-file:{encoded_path}:entities     → JSON Vec<String>   (entity ids in this file)
-edge:{caller_id}:{callee_id}     → "1"                (O(1) existence check)
-meta:graph                       → JSON GraphMetadata (repo path, counts, languages)
-index:lang:{language}            → JSON Vec<String>   (entity ids by language)
-stale:{encoded_path}             → "1"                (cleared after re-index)
-history:recent:{rfc3339}:{uuid}  → file_path          (time-ordered, newest-last)
-history:count:{encoded_path}     → JSON FileAccessCount
-watcher:last_reconcile           → RFC3339 timestamp
+entity:{entity_id}                → JSON CodeEntity
+callers:{entity_id}               → JSON Vec<String>  (pre-computed reverse edges)
+callees:{entity_id}               → JSON Vec<String>  (pre-computed forward edges)
+file:{path_encoded}:entities      → JSON Vec<String>  (entity IDs in this file)
+edge:{caller}:{callee}            → "1"               (O(1) existence check)
+meta:graph                        → JSON GraphMetadata
+index:lang:{language}             → JSON Vec<String>  (entity IDs by language)
+stale:{file_path}                 → "1"               (cleared after re-index)
+watcher:last_reconcile            → RFC3339 timestamp
+history:recent:{rfc3339}:{uuid}   → file_path string  (time-ordered, newest-last)
+history:count:{file_path}         → JSON FileAccessCount
+history:error:{rfc3339}:{uuid}    → JSON AgentAction  (errors only)
+action:{uuid}                     → JSON AgentAction  (full record)
 ```
 
-Reverse edges (`callers:`) are pre-computed at write time so `find_callers()` is a single O(1) KV read regardless of graph size.
+Reverse edges (`callers:` and `callees:`) are pre-computed at write time. Every read operation — including `find_callers`, `find_callees`, BFS traversal, and `explain_entity` — is a bounded number of O(1) KV lookups regardless of graph size.
 
 ---
 
 ## Architecture
 
-**Layer 1 — Parser.** The `src/indexer/` module uses tree-sitter grammars for Rust, Python, JavaScript, and TypeScript to parse source files into `CodeEntity` records (id, name, type, file path, line range, language, docstring, calls, callers). A two-pass algorithm resolves both intra-file and cross-file call edges using an import symbol table, building a `CallGraph` that captures the full dependency structure of the repository.
+**Layer 1 — Parser (`src/indexer/`).** tree-sitter grammars for Rust, Python, JavaScript, and TypeScript parse each source file into a concrete syntax tree. The extractor walks the AST to collect `CodeEntity` records (id, name, type, file path, line range, language, docstring, calls). A two-pass algorithm resolves intra-file and cross-file call edges using an import symbol table, producing a `CallGraph` that captures the full dependency structure of the repository.
 
-**Layer 2 — Storage.** The `src/storage/` module wraps sled, an embedded B-tree KV store, through a thin `KvBackend` that serializes values as JSON. `GraphStore` pre-computes bidirectional edge indexes at write time — writing is O(V + E), but every subsequent read is O(1). BFS and reverse BFS fan out one KV read per visited node, making traversal fast on SSD even for large graphs. `delete_file()` cascades edge cleanup across all cross-file references.
+**Layer 2 — Storage (`src/storage/`).** sled is a pure-Rust embedded B-tree KV store with no C FFI and no external process. `store_graph()` pre-computes both `callers:{id}` and `callees:{id}` at write time — O(E) cost at index, O(1) cost at every subsequent read. `delete_file()` cascades correctly, updating all cross-file callers and callees lists before removing entity and edge keys. The `KvBackend` abstraction is designed to support a future multi-tier storage upgrade.
 
-**Layer 3 — Tracker.** The `src/tracker/` module logs every agent file access through a bounded async Tokio mpsc channel. The background writer drains the channel to sled without blocking the query path. `History` provides `recent_files()`, `frequent_files()`, and `file_last_accessed()`, which extracts exact timestamps from time-ordered KV keys to give the query engine real elapsed seconds rather than an approximation.
+**Layer 3 — Tracker (`src/tracker/`).** Every file read and edit is logged through `ActionLogger`, which places actions into a bounded Tokio mpsc channel (capacity 1000) and returns in under 1 µs. A background task owns the receiver and performs all KV writes without blocking the query path. `History` provides `recent_files()`, `frequent_files()`, and `file_last_accessed()`, the last of which extracts exact RFC3339 timestamps from time-ordered KV keys to give the query engine real elapsed seconds for recency scoring.
 
-**Layer 4 — Query Engine.** The `src/query/` module scores every entity in the graph against the query using the four-signal formula, groups results by file, takes the maximum score per file, sorts descending, and returns the top-K `RelevantFile` records. The graph distance signal uses an O(degree) approximation (depth ≤ 2) instead of full BFS per entity, keeping query latency well under 1 ms for warm graphs. Stale warnings are attached after ranking.
+**Layer 4 — Query Engine (`src/query/`).** Four pure scoring functions (no I/O, no side effects) are combined with fixed weights. `rank_files()` groups scored entities by file, takes the maximum score per file, sorts descending, and returns the top-K `RelevantFile` records. `QueryEngine::query()` checks stale flags for every result file and appends a `stale_warning` where applicable. The graph distance signal uses an O(degree) approximation checking depth ≤ 2 neighbors rather than full BFS per entity.
 
-**Layer 5 — MCP Server.** The `src/mcp/` module implements JSON-RPC 2.0 over stdio. The server runs a blocking read-process-write loop: one line in, one line out, stdout flushed immediately after every response. With `--watch`, the MCP server runs in `tokio::task::spawn_blocking`, the file watcher on a `std::thread`, and the reconciler as a `tokio::spawn`; `tokio::select!` exits cleanly when any task terminates.
+**Layer 5 — MCP Server (`src/mcp/`).** Line-delimited JSON-RPC 2.0 over stdio: one request line in, one response line out, stdout flushed after every response. The server is spawned as a subprocess by the AI agent's host process — no port selection, no firewall rules, no authentication tokens. Five tool handlers dispatch to the query engine and graph store through a single `GraphSwarmState` struct. With `--watch`, the MCP server runs in `tokio::task::spawn_blocking`, the file watcher on a `std::thread`, and the reconciler as a `tokio::spawn` task, with a `tokio::select!` loop that exits cleanly when any component terminates.
+
+**Layer 6 — File Watcher (`src/watcher/`).** `notify-debouncer-mini` with a 500ms debounce window sits on a dedicated `std::thread` because the `notify` crate is synchronous. It converts OS-level filesystem events to typed `FileEvent` values and sends them to the `Reconciler` over a Tokio mpsc channel. The reconciler processes each event atomically: modified files go through a mark-stale → delete → reparse → store → clear-stale sequence, and deleted files trigger cascade removal of all entities and cross-file edge references.
 
 ---
 
@@ -182,21 +233,25 @@ Reverse edges (`callers:`) are pre-computed at write time so `find_callers()` is
 
 | Operation | Target | Measured |
 |---|---|---|
-| Index 100-file repo | < 5 s | run `cargo bench` to measure |
-| Index single file | < 100 ms | run `cargo bench` to measure |
-| Query warm (p99) | < 1 ms | run `cargo bench` to measure |
-| BFS depth 3 | < 100 ms | run `cargo bench` to measure |
-| `action log()` call | < 1 μs | run `cargo bench` to measure |
-| Binary size | < 20 MB | **7.3 MB** |
+| Index 100-file repo | < 5 s | 49 ms |
+| Index single file | < 100 ms | 878 µs |
+| BFS depth 3 (1 000-node graph) | < 100 ms | 101 µs |
+| Reverse BFS depth 3 | < 100 ms | 3.96 µs |
+| `find_callers` | < 1 ms | 2.90 µs |
+| `find_in_file` (50 entities) | < 5 ms | 102 µs |
+| Query warm (500-entity graph) | < 1 ms | 9.6 ms * |
+| Binary size | < 20 MB | 7.3 MB |
 
-Run `cargo bench` to generate full HTML reports with variance analysis in `target/criterion/`. The benchmark suite covers indexing speed, query latency (warm vs cold), graph traversal (BFS, reverse BFS, `find_callers`, `find_in_file`), and action logging throughput.
+\* `query_warm` scans all entities in the graph to score them (O(V)). For the 500-entity benchmark graph this is 9.6 ms. The bottleneck is the full `entity_keys()` scan through sled, not the scoring math. A top-K pre-filter is planned for v0.2.
+
+Run `cargo bench` to regenerate full HTML reports with variance analysis in `target/criterion/`.
 
 ---
 
 ## Development
 
 ```bash
-cargo test                    # 266 tests, 0 failures
+cargo test                    # 266 tests, 0 failed
 cargo clippy -- -D warnings   # 0 warnings
 cargo bench                   # Criterion HTML reports in target/criterion/
 cargo build --release         # 7.3 MB self-contained binary
@@ -205,15 +260,16 @@ cargo build --release         # 7.3 MB self-contained binary
 **Module structure:**
 
 ```
-src/indexer/   — tree-sitter parser, entity extractor, CallGraph
-src/storage/   — sled KV backend, GraphStore, schema, watcher keys
-src/tracker/   — async ActionLogger (Tokio mpsc), History queries
-src/query/     — 4-signal relevance engine, ranker, RelevantFile
-src/mcp/       — JSON-RPC 2.0 server, 5 tool handlers, protocol types
-src/watcher/   — FileWatcher (notify), Reconciler, dirty queue
+src/indexer/   — tree-sitter parser, entity extractor, call graph
+src/storage/   — sled KV backend, graph queries, schema
+src/tracker/   — async action logger, history queries
+src/query/     — 4-signal relevance engine, ranker, QueryEngine
+src/mcp/       — JSON-RPC 2.0 server, 5 tool handlers
+src/watcher/   — file watcher (notify), reconciler, event types
 src/cli/       — 5 subcommands: index, query, server, export, install
-benches/       — Criterion benchmarks: indexing, query, traversal, logging
-tests/         — integration tests (6), watcher tests (9), module tests
+src/utils/     — tracing setup, config
+benches/       — Criterion benchmarks for all layers
+tests/         — integration tests, watcher tests, module tests
 ```
 
 CI runs on every push and pull request to `main` and `dev`:
@@ -228,39 +284,49 @@ See `.github/workflows/ci.yml`.
 
 ## Architecture Decisions
 
-**Why sled over RocksDB or SQLite?**
-Sled is a pure-Rust embedded B-tree with no C dependencies, which simplifies cross-compilation and keeps the binary fully self-contained. It provides sorted key iteration (enabling time-ordered prefix scans for history), ACID-like durability, and async-flush semantics at a level appropriate for a developer tool. RocksDB adds build complexity with no benefit at GraphSwarm's scale; SQLite would require schema migrations and cannot efficiently serve the prefix-scan patterns the tracker relies on.
+**Why sled over RocksDB or SQLite?** Sled is pure Rust with no C FFI, which means a single `cargo build --release` produces a fully self-contained binary on any platform without system library dependencies. It provides sorted key iteration (required for the time-ordered `history:recent:` prefix scans), ACID-like durability, and performance appropriate for a developer tool. RocksDB adds C++ build complexity with no benefit at GraphSwarm's scale; SQLite would require schema migrations and cannot efficiently serve the prefix-scan patterns the tracker relies on.
 
-**Why pre-compute reverse edges at write time?**
-`find_callers()` is the hottest read path — agents ask "who calls this function?" far more often than they modify the graph. Pre-computing the reverse adjacency list at index time turns that read into a single O(1) KV lookup regardless of graph size. The cost is paid once at write time (O(V + E)) and amortized across every subsequent query.
+**Why pre-compute reverse edges at write time?** `find_callers()` is the hottest read path — agents ask "who calls this function?" far more often than the graph is modified. Pre-computing both `callers:{id}` and `callees:{id}` at index time turns every caller lookup into a single O(1) KV read regardless of graph size. The cost is paid once at write time (O(E)) and amortized across every subsequent query.
 
-**Why max score per file instead of average?**
-A file containing one highly relevant function and nine irrelevant utility functions should rank near the top, not get buried by the average of its entities' scores. Agents typically navigate to the specific function they need, so surfacing the file is the right behavior. Max-per-file correctly models the question "is there anything in this file worth looking at?" while average answers the much weaker question "how relevant is the file on average?"
+**Why max score per file instead of average?** A file containing one highly relevant function and nine unrelated utilities should rank near the top, not be penalized by the average of its entities' scores. Max-per-file correctly models the question "is there anything in this file worth examining?" while averaging answers the much weaker question "how relevant is the file on average?" — which consistently buries useful files behind large ones with many mediocre entities.
 
-**Why a Tokio mpsc channel for action logging?**
-Logging agent file accesses to disk on the query hot path would add unbounded latency spikes whenever sled flushes. A bounded mpsc channel makes each `log()` call a submicrosecond channel send; the background task drains to disk asynchronously. The channel capacity ensures a slow disk cannot stall the agent even during heavy I/O.
+**Why a Tokio mpsc channel for action logging?** Writing to sled on the query hot path would add unbounded latency spikes whenever the OS flushes dirty pages. A bounded mpsc channel makes each `log()` call a sub-microsecond channel send; the background task drains to disk asynchronously. The bounded capacity of 1000 provides backpressure if the disk falls behind, preventing unbounded memory growth without ever blocking the query path under normal workloads.
 
-**Why stdio MCP instead of HTTP?**
-Stdio eliminates every configuration problem: no port selection, no localhost binding, no firewall rules, no auth tokens. The MCP client (the AI agent's host) spawns GraphSwarm as a subprocess and owns its lifetime — when the agent exits, the server exits. For the common single-user developer workflow this is strictly simpler than HTTP with no tradeoff. An HTTP mode is planned for Phase 7 to support remote and multi-user deployments.
+**Why stdio MCP instead of HTTP?** Stdio eliminates every configuration problem: no port selection, no localhost binding, no firewall rules, no authentication tokens. The MCP client spawns GraphSwarm as a subprocess and owns its lifetime — when the client exits, GraphSwarm exits. For the single-user developer workflow this is strictly simpler than HTTP with no tradeoffs. An HTTP transport mode is planned for Phase 7 to support remote and multi-user deployments.
 
-**Why 500 ms debounce on the file watcher?**
-Most text editors write files in multiple OS operations: write to a temp path, flush, then rename atomically to the final path. Without debouncing, GraphSwarm would receive two or three raw events and potentially parse an incomplete file on the first one. A 500 ms window absorbs the full editor save sequence and triggers exactly one reconcile pass on the complete, final file.
+**Why 500ms debounce on the file watcher?** Most text editors perform multiple OS-level write operations when saving a file: write to a temporary path, sync, then rename atomically to the final path. Without debouncing, GraphSwarm would receive two or three raw events per save and potentially read a partial or empty file on the first event. A 500ms window absorbs the full editor save sequence and triggers exactly one reconcile pass on the complete, final file.
+
+**Why is D3.js bundled inline?** Including D3.js via a CDN URL means the exported `graph.html` fails to render in any offline or air-gapped environment and produces a network request to a third-party server every time the file is opened. Bundling D3.js v7.9.0 as a compile-time string literal (279 KB minified, embedded via `include_str!`) makes the exported graph a single fully self-contained HTML file that renders correctly with no network access required, indefinitely, regardless of CDN availability.
+
+---
+
+## .gitignore
+
+Add the following to your project's `.gitignore`:
+
+```gitignore
+**/.graphswarm/       # database written by the index command
+graphswarm-out/       # export output (graph.html, graph.json, GRAPH_REPORT.md)
+graphswarm_output/    # graph.json written during indexing
+target/criterion/     # Criterion benchmark HTML reports
+```
 
 ---
 
 ## Roadmap
 
-**Phases 1–6: Complete ✅**
+**Phases 1–6: Complete**
 
-The core indexer, storage layer, action tracker, query engine, MCP server, file watcher, JS/TS parser support, real benchmarks, and integration tests are all shipped.
+The core indexer, storage layer, action tracker, query engine, MCP server, file watcher, JavaScript and TypeScript parser support, Criterion benchmarks, CI pipeline, and integration tests are all shipped.
 
 **Phase 7 (planned):**
 
-- **Go language parser** — tree-sitter-go grammar, function and method extraction, import resolution
-- **HTTP MCP mode** — optional HTTP transport for remote agents and multi-user team deployments
-- **KV-SWARM multi-tier storage** — tiered cache (GPU memory → DRAM → disk) for very large repositories
-- **Web dashboard** — browser-based graph explorer built on the existing `graph.html` export
-- **Semantic similarity** — optional embedding-based scoring alongside the existing token-match signals, for queries where keyword overlap is insufficient
+- **Go language parser** — the `Language::Go` enum variant and extension mapping already exist; the tree-sitter-go grammar is ready to wire in
+- **HTTP MCP transport** — optional HTTP mode for remote agents and multi-user team deployments where stdio subprocess spawning is not available
+- **KV-SWARM multi-tier storage** — tiered cache with a GPU hot tier, DRAM warm tier, and sled cold tier for very large repositories where the full entity set does not fit in memory
+- **Top-K pre-filter in query engine** — an inverted index on entity name tokens to eliminate the O(V) full scan and bring `query_warm` latency under 1 ms
+- **Web dashboard** — browser-based interactive graph explorer extending the existing `graph.html` export
+- **Semantic similarity scoring** — optional embedding-based signal alongside the existing token-match signals for queries where keyword overlap is insufficient
 
 ---
 
