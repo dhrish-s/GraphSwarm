@@ -32,7 +32,7 @@ GraphSwarm reads your source files and builds a bidirectional call graph showing
 
 ### Option A -Download pre-built binary
 
-Download from the [GitHub Releases page][RELEASES_URL].
+Download from the [GitHub Releases page](https://github.com/dhrish-s/GraphSwarm/releases/tag/v0.1.0)
 
 - Windows: `graphswarm.exe`
 - Linux/Mac: `graphswarm`
@@ -44,7 +44,7 @@ No Rust required.
 Requires Rust 1.75 or later.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/GraphSwarm
+git clone git clone https://github.com/dhrish-s/GraphSwarm
 cd GraphSwarm
 cargo build --release
 ```
