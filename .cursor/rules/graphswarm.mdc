@@ -1,0 +1,30 @@
+---
+description: GraphSwarm code graph intelligence
+globs: ["**/*.rs", "**/*.py", "**/*.ts", "**/*.go"]
+alwaysApply: true
+---
+
+# GraphSwarm Rules
+
+This repository is indexed by GraphSwarm. Before answering questions about
+the codebase, use the GraphSwarm MCP tools to query the call graph.
+
+## Available tools
+
+- `query_graph` -find relevant files for a natural language query
+- `get_callers` -who calls a specific function?
+- `get_callees` -what does a function call?
+- `shortest_path` -shortest call chain between two entities
+- `explain_entity` -full details about a code entity
+
+## Starting the server
+
+```bash
+graphswarm server
+```
+
+## Re-indexing
+
+```bash
+graphswarm index ./
+```
