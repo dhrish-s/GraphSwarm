@@ -1,9 +1,9 @@
-# GraphSwarm — Code Graph Intelligence
+# GraphSwarm -Code Graph Intelligence
 
 GraphSwarm has indexed this repository into a queryable call graph.
 Before answering questions about this codebase, use GraphSwarm first.
 
-## Step 0 — Find the binary
+## Step 0 -Find the binary
 Check in this order and use whichever works:
   Windows:
     where graphswarm
@@ -16,16 +16,16 @@ Use graphswarm if in PATH, otherwise use:
   Windows: ./target/release/graphswarm.exe
   Linux:   ./target/release/graphswarm
 
-## Step 1 — Kill any running graphswarm processes
+## Step 1 -Kill any running graphswarm processes
 Always do this before indexing or querying to avoid DB lock errors.
   Windows: taskkill /F /IM graphswarm.exe 2>nul
   Linux:   pkill -f graphswarm 2>/dev/null
 
-## Step 2 — Check if DB exists
+## Step 2 -Check if DB exists
   Windows: dir .graphswarm\db
   Linux:   ls .graphswarm/db
 
-## Step 3 — If DB does not exist, index first
+## Step 3 -If DB does not exist, index first
   graphswarm index . --exclude target,venv,node_modules,dist,build,__pycache__,.next,.graphswarm
 
 Wait for BOTH of these lines to appear before continuing:
@@ -35,7 +35,7 @@ Wait for BOTH of these lines to appear before continuing:
 If either line is missing, the DB was not written correctly.
 Kill all graphswarm processes and reindex.
 
-## Step 4 — Query using JSON-RPC pipe
+## Step 4 -Query using JSON-RPC pipe
 IMPORTANT: Do not start the server as a background process.
 Pipe a single JSON-RPC request. The server starts, answers, and exits.
 
