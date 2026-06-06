@@ -1,212 +1,312 @@
-# GraphSwarm
+GraphSwarm indexes your codebase into a queryable call graph and exposes it to AI coding assistants via a skill file. Instead of reading hundreds of files and guessing, your AI editor queries the graph -  finding exactly which files are relevant, what calls what, and how everything connects. It understands Rust, Python, JavaScript, and TypeScript out of the box, persists the graph to an embedded database so queries are instant, and ships as a single self-contained binary with no runtime dependencies. Works with Claude Code, Cursor, and any MCP-compatible editor.
 
-Indexes your codebase into a call graph and exposes it to AI coding assistants via MCP.
+---
 
 ## Quick Start
 
-**Windows**
+**Step 1 -  Download or build the binary**
 
-```cmd
-cd your-project
-graphswarm index .
-graphswarm install --project . --platform all
-graphswarm server --watch
-```
+Option A: Download a pre-built binary from the [GitHub Releases page](https://github.com/dhrish-s/GraphSwarm/releases/tag/v0.1.0) -  no Rust required.
 
-**Linux/Mac**
+- Windows: download `graphswarm.exe`
+- Linux/Mac: download `graphswarm`, then run `chmod +x graphswarm`
 
-```bash
-cd your-project
-graphswarm index .
-graphswarm install --project . --platform all
-graphswarm server --watch
-```
-
-Open Claude Code, Cursor, or any MCP-compatible editor. GraphSwarm is now live.
-
-## What It Does
-
-GraphSwarm reads your source files and builds a bidirectional call graph showing which functions call which. The graph is persisted to an embedded database inside your project, so subsequent queries are instant. A file watcher updates the graph in real time as you edit code. Five MCP tools expose the graph to any AI editor that supports the Model Context Protocol.
-
-## Installation
-
-### Option A -Download pre-built binary
-
-Download from the [GitHub Releases page](https://github.com/dhrish-s/GraphSwarm/releases/tag/v0.1.0)
-
-- Windows: `graphswarm.exe`
-- Linux/Mac: `graphswarm`
-
-No Rust required.
-
-### Option B -Build from source
-
-Requires Rust 1.75 or later.
+Option B: Build from source (requires Rust 1.75+)
 
 ```bash
 git clone https://github.com/dhrish-s/GraphSwarm
 cd GraphSwarm
 cargo build --release
+# Binary will be at target/release/graphswarm  (or .exe on Windows)
 ```
 
-### Add to PATH
+---
 
-**Windows** (run as Administrator):
+**Step 2 -  Add to PATH (do once)**
+
+Windows -  run Command Prompt as Administrator:
 
 ```cmd
-setx PATH "%PATH%;D:\path\to\GraphSwarm\target\release"
+setx PATH "%PATH%;C:\path\to\graphswarm\folder"
 ```
 
-**Linux/Mac** (add to `~/.bashrc` or `~/.zshrc`):
+Linux/Mac -  add to `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-export PATH="$PATH:/path/to/GraphSwarm/target/release"
+export PATH="$PATH:/path/to/graphswarm/folder"
 ```
 
-## Using on a Project
+After adding, open a new terminal and verify:
 
-1. **Index the project**
+```bash
+graphswarm --version
+```
 
-   ```bash
-   graphswarm index .
-   ```
-   
+---
 
-2. **Install skill files**
+**Step 3 -  Index your project**
 
-   ```bash
-   graphswarm install --project . --platform all
-   ```
+Always kill any running GraphSwarm processes before indexing to avoid database lock errors.
 
-   Writes:
+Windows:
 
-   - `.claude/skills/graphswarm/SKILL.md` -Claude Code
-   - `.cursor/rules/graphswarm.mdc` -Cursor
-   - `AGENTS.md` -Codex agents
+```cmd
+taskkill /F /IM graphswarm.exe
+```
 
-3. **Start the server**
+Linux/Mac:
 
-   ```bash
-   graphswarm server --watch
-   ```
+```bash
+pkill -f graphswarm
+```
 
-4. **Open your AI editor** -it reads the skill files automatically.
+Then index from your project root:
 
-5. **Export a visual graph** (optional)
+```bash
+graphswarm index . --exclude target,venv,node_modules,dist,build,__pycache__,.next,.graphswarm
+```
 
-   ```bash
-   graphswarm export .
-   ```
+Wait for **both** of these lines to appear before continuing:
 
-   Then open `graphswarm-out/graph.html` in a browser.
+```
+Graph persisted to: .graphswarm/db
+Action tracker started.
+```
+
+If either line is missing, kill all processes and reindex.
+
+---
+
+**Step 4 -  Install skill files**
+
+```bash
+graphswarm install --project . --platform all
+```
+
+This writes three files into your project:
+
+- `.claude/skills/graphswarm/SKILL.md` -  Claude Code
+- `.cursor/rules/graphswarm.mdc` -  Cursor
+- `AGENTS.md` -  Codex agents
+
+---
+
+**Step 5 -  Open your AI editor**
+
+Open Claude Code, Cursor, or any MCP-compatible editor in this folder. The skill file is read automatically -  no further configuration needed.
+
+---
+
+**Step 6 -  Ask anything**
+
+Your AI editor now has full call graph awareness. Try asking:
+
+- "Find files related to authentication"
+- "What calls the store_graph function?"
+- "How does main reach the MCP server?"
+
+---
+
+## How It Works
+
+GraphSwarm reads your source files using a fast native parser. It extracts every function, method, class, and import as a named entity, then detects which functions call which others. The result is a complete bidirectional call graph of your entire codebase, built in a single pass.
+
+The call graph is persisted to an embedded database inside your project at `.graphswarm/db/`. Subsequent queries are instant -  the graph survives process restarts with no re-indexing needed unless your code changes. The optional file watcher updates individual files incrementally as you edit, keeping the graph current without a full reindex.
+
+When your AI editor asks a question, GraphSwarm scores every entity using four signals: name match, call graph distance, recency, and docstring content. Results are ranked by file, highest score first, so the most relevant code surfaces at the top every time.
+
+Five tools expose the graph to your AI editor. The editor calls them automatically when you ask questions about your code -  no manual commands needed. Each tool speaks the Model Context Protocol, so it works with any MCP-compatible host out of the box.
+
+---
 
 ## MCP Tools
 
-| Tool | Input | When to use |
-|------|-------|-------------|
-| `query_graph` | natural language query | Find relevant files for a topic |
-| `get_callers` | entity_id | What calls this function? |
-| `get_callees` | entity_id | What does this function call? |
-| `shortest_path` | two entity_ids | How does A reach B? |
-| `explain_entity` | entity_id | Full details about a function |
+| Tool | What it does |
+|------|-------------|
+| `query_graph` | Find the most relevant files for a natural language query |
+| `get_callers` | Find everything that calls a specific function |
+| `get_callees` | Find everything a specific function calls |
+| `shortest_path` | Find the shortest call chain between two functions |
+| `explain_entity` | Get full details about any function or method |
 
-Entity IDs follow the format `file_path::function_name`. Example: `src/auth.rs::authenticate_user`. Use forward slashes on all platforms -GraphSwarm normalizes automatically on Windows.
+Tools that take a function name use entity IDs in the format `file_path::function_name`, or `file_path::StructName::method_name` for methods on structs. Example: `src/auth.rs::authenticate_user`. Use forward slashes on all platforms -  GraphSwarm normalizes automatically on Windows.
+
+---
 
 ## CLI Reference
 
 ```bash
-# Index a repository (run from project root)
+# ── Index ─────────────────────────────────────────────────────────
+# Index a project from its root directory
 graphswarm index .
 
-# Exclude library folders (recommended for Python/JS projects)
-graphswarm index . --exclude venv,node_modules,dist,build,__pycache__,.next
+# Exclude library and build folders (recommended)
+graphswarm index . --exclude target,venv,node_modules,dist,build,__pycache__,.next,.graphswarm
 
-# Query without starting the server
+# ── Query ─────────────────────────────────────────────────────────
+# Query without starting the server (quick check)
 graphswarm query "authentication flow"
-graphswarm query "database layer" --index .graphswarm/db
+graphswarm query "database layer"
 
-# Start MCP server
+# ── Server ────────────────────────────────────────────────────────
+# Start MCP server (reads requests from stdin, writes to stdout)
 graphswarm server
-graphswarm server --watch        # with live file watcher
 
-# Export visual graph
+# Start MCP server with live file watcher
+graphswarm server --watch
+
+# ── Export ────────────────────────────────────────────────────────
+# Export graph.json, graph.html, and GRAPH_REPORT.md into graphswarm-out/
 graphswarm export .
 
-# Install skill files
-graphswarm install --project .                     # Claude Code only
-graphswarm install --project . --platform all      # all editors
-graphswarm install --project . --platform cursor   # Cursor only
+# ── Install ───────────────────────────────────────────────────────
+# Install skill files for all editors (recommended)
+graphswarm install --project . --platform all
+
+# Install for a specific editor only
+graphswarm install --project . --platform claude   # Claude Code
+graphswarm install --project . --platform cursor   # Cursor
 graphswarm install --project . --platform codex    # AGENTS.md only
-graphswarm install                                 # write to home dir
 
-# Build
-cargo build --release
-
+# Install to home directory (available in all projects)
+graphswarm install
 ```
 
-
-## Multiple Projects
-
-Each project gets its own `.graphswarm/db/` database inside its root directory. Run `graphswarm index .` from that project's root to build or refresh its graph. The server always reads from the `.graphswarm/db/` in the directory where it was started. Projects are fully independent -indexing one project has no effect on another.
+---
 
 ## Supported Languages
 
 | Language | Status |
 |----------|--------|
-| Rust | ✅ Supported |
-| Python | ✅ Supported |
-| JavaScript | ✅ Supported |
-| TypeScript | ✅ Supported |
-| Go | 🔜 Planned (v0.2.0) |
+| Rust | ✅ Full support |
+| Python | ✅ Full support |
+| JavaScript | ✅ Full support |
+| TypeScript | ✅ Full support |
+| Go | 🔜 Coming soon |
+
+---
+
+## Multiple Projects
+
+Each project gets its own `.graphswarm/db/` database inside its root directory. Switching projects means running `graphswarm index .` in that project's root -  there is nothing global to configure. The server always reads from the `.graphswarm/db/` in the directory where it was started, so running it from the right folder is all that is needed. Projects are fully independent: indexing one has no effect on any other.
+
+---
 
 ## Troubleshooting
 
-**Server returns "Graph not indexed"**
+**"Graph not indexed" error**
 
-Delete the database and re-index:
+The database was not written correctly or is missing.
+
+Windows:
 
 ```powershell
-# Windows
 Remove-Item -Recurse -Force .graphswarm
 graphswarm index .
 ```
 
+Linux/Mac:
+
 ```bash
-# Linux/Mac
 rm -rf .graphswarm
 graphswarm index .
 ```
 
-**`query --index` flag needed**
+---
 
-This flag is only needed if you indexed a subdirectory instead of the project root. Always run `graphswarm index .` from the project root to avoid this.
+**DB lock error during index**
 
-**`graph.html` shows nothing on first open**
+Another graphswarm process is running and holding the database lock.
 
-Make sure you ran `graphswarm export .` from the project root after indexing.
+Windows:
 
-**Query results include third-party library code**
+```cmd
+taskkill /F /IM graphswarm.exe
+```
 
-Re-index with exclusions:
+Linux/Mac:
 
 ```bash
-# Python
-graphswarm index . --exclude venv,.venv,__pycache__,site-packages
-
-# JavaScript/TypeScript
-graphswarm index . --exclude node_modules,dist,build,.next
-
-# Both
-graphswarm index . --exclude venv,node_modules,dist,build,__pycache__,.next
+pkill -f graphswarm
 ```
+
+Then reindex immediately.
+
+---
+
+**Index appears to succeed but DB is missing**
+
+The "Graph persisted" confirmation line never appeared. Both of these lines must appear after indexing:
+
+```
+Graph persisted to: .graphswarm/db
+Action tracker started.
+```
+
+If either is missing, kill all processes and reindex.
+
+---
+
+**Query results include library code**
+
+Third-party libraries are being indexed. Re-index with exclusions:
+
+```bash
+graphswarm index . --exclude target,venv,node_modules,dist,build,__pycache__,.next,.graphswarm
+```
+
+---
+
+**`graphswarm` not recognized as a command**
+
+The binary is not in PATH. Add the folder containing the binary to your PATH (see Step 2 above), then open a new terminal and verify:
+
+```bash
+graphswarm --version
+```
+
+---
+
+**`graph.html` shows nothing in the browser**
+
+Export was run before indexing, or from the wrong directory. Run the export from the project root after indexing:
+
+```bash
+graphswarm export .
+```
+
+Then open `graphswarm-out/graph.html` in a browser.
+
+---
+
+## Roadmap
+
+**v0.1.0 -  Current release**
+
+- Call graph indexing for Rust, Python, JavaScript, and TypeScript
+- 5 MCP tools: `query_graph`, `get_callers`, `get_callees`, `shortest_path`, `explain_entity`
+- File watcher for live graph updates
+- D3.js visual graph export (works offline)
+- Skill file installation for Claude Code, Cursor, and Codex
+- 266 tests, 0 warnings, 7.3 MB binary
+
+**v0.2.0 -  Coming soon**
+
+Major improvements are in progress. If you want to follow along or contribute, watch the repository:
+[https://github.com/dhrish-s/GraphSwarm](https://github.com/dhrish-s/GraphSwarm)
+
+---
 
 ## Build Stats
 
-- Tests: 266 passing
+- Tests: 266 passing, 0 failed
 - Warnings: 0
 - Binary size: 7.3 MB
-- CI: GitHub Actions (`.github/workflows/ci.yml`)
+- CI: GitHub Actions
+- License: MIT
+
+---
 
 ## License
 
-MIT
+MIT -  see [LICENSE](LICENSE) file.

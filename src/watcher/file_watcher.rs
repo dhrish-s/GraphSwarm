@@ -66,7 +66,7 @@ impl FileWatcher {
                             continue;
                         }
 
-                        // debouncer v0.4 gives us DebouncedEventKind::Any/AnyContinuous —
+                        // debouncer v0.4 gives us DebouncedEventKind::Any/AnyContinuous - 
                         // we infer the semantic kind from whether the file still exists.
                         let kind = if path.exists() {
                             EventKind::Modified
