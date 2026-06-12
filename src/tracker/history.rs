@@ -521,7 +521,7 @@ mod tests {
         let elapsed = (now - ts).num_seconds();
         // t5 was now - 100s; allow ±30s for test timing jitter
         assert!(
-            elapsed >= 70 && elapsed <= 130,
+            (70..=130).contains(&elapsed),
             "expected ~100s elapsed for file_a.rs, got {elapsed}s"
         );
     }

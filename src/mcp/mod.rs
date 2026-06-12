@@ -3,12 +3,13 @@
 //! Exposes GraphSwarm's code graph to AI agents (Claude Code, Cursor, etc.)
 //! via the MCP stdio protocol -JSON-RPC 2.0 over stdin/stdout.
 //!
-//! Five tools:
+//! Six tools:
 //!   query_graph    -natural language → ranked relevant files
 //!   get_callers    -who calls this entity?
 //!   get_callees    -what does this entity call?
 //!   shortest_path  -call chain from A to B
 //!   explain_entity -full entity details
+//!   find_tests     -list tests, or find tests covering an entity
 //!
 //! Usage:
 //!   graphswarm server           # start MCP server on stdio

@@ -1,3 +1,10 @@
+//! Command-line interface for the `graphswarm` binary.
+//!
+//! `Cli` is the clap-derived entry point with one `Commands` variant per
+//! subcommand: `IndexCommand`, `QueryCommand`, `ServerCommand`,
+//! `ExportCommand`, and `InstallCommand`. Library consumers typically
+//! don't need this module -it exists to support the `graphswarm` binary.
+
 pub mod assets;
 pub mod export_cmd;
 pub mod index_cmd;

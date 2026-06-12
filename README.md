@@ -1,4 +1,4 @@
-GraphSwarm indexes your codebase into a queryable call graph and exposes it to AI coding assistants via a skill file. Instead of reading hundreds of files and guessing, your AI editor queries the graph -  finding exactly which files are relevant, what calls what, and how everything connects. It understands Rust, Python, JavaScript, and TypeScript out of the box, persists the graph to an embedded database so queries are instant, and ships as a single self-contained binary with no runtime dependencies. Works with Claude Code, Cursor, and any MCP-compatible editor.
+GraphSwarm indexes your codebase into a queryable call graph and exposes it to AI coding assistants via a skill file. Instead of reading hundreds of files and guessing, your AI editor queries the graph -  finding exactly which files are relevant, what calls what, and how everything connects. It understands Rust, Python, JavaScript, TypeScript, and Go out of the box, persists the graph to an embedded database so queries are instant, and ships as a single self-contained binary with no runtime dependencies. Works with Claude Code, Cursor, and any MCP-compatible editor.
 
 ---
 
@@ -6,7 +6,7 @@ GraphSwarm indexes your codebase into a queryable call graph and exposes it to A
 
 **Step 1 -  Download or build the binary**
 
-Option A: Download a pre-built binary from the [GitHub Releases page](https://github.com/dhrish-s/GraphSwarm/releases/tag/v0.1.0) -  no Rust required.
+Option A: Download a pre-built binary from the [GitHub Releases page](https://github.com/dhrish-s/GraphSwarm/releases/tag/v0.2.0) -  no Rust required.
 
 - Windows: download `graphswarm.exe`
 - Linux/Mac: download `graphswarm`, then run `chmod +x graphswarm`
@@ -80,14 +80,17 @@ If either line is missing, kill all processes and reindex.
 **Step 4 -  Install skill files**
 
 ```bash
-graphswarm install --project . --platform all
+graphswarm install --project .
 ```
 
-This writes three files into your project:
+`--platform all` is the default, so this writes four files into your project:
 
 - `.claude/skills/graphswarm/SKILL.md` -  Claude Code
 - `.cursor/rules/graphswarm.mdc` -  Cursor
 - `AGENTS.md` -  Codex agents
+- `.graphswarm/config.toml` -  records the project's absolute path, so MCP hosts that launch `graphswarm server` from a different working directory can still find the right database
+
+Pass `--platform claude`, `--platform cursor`, or `--platform codex` to install for a single editor only.
 
 ---
 
@@ -115,7 +118,7 @@ The call graph is persisted to an embedded database inside your project at `.gra
 
 When your AI editor asks a question, GraphSwarm scores every entity using four signals: name match, call graph distance, recency, and docstring content. Results are ranked by file, highest score first, so the most relevant code surfaces at the top every time.
 
-Five tools expose the graph to your AI editor. The editor calls them automatically when you ask questions about your code -  no manual commands needed. Each tool speaks the Model Context Protocol, so it works with any MCP-compatible host out of the box.
+Six tools expose the graph to your AI editor. The editor calls them automatically when you ask questions about your code -  no manual commands needed. Each tool speaks the Model Context Protocol, so it works with any MCP-compatible host out of the box.
 
 ---
 
@@ -128,6 +131,7 @@ Five tools expose the graph to your AI editor. The editor calls them automatical
 | `get_callees` | Find everything a specific function calls |
 | `shortest_path` | Find the shortest call chain between two functions |
 | `explain_entity` | Get full details about any function or method |
+| `find_tests` | List every detected test, or find the tests that cover a given function |
 
 Tools that take a function name use entity IDs in the format `file_path::function_name`, or `file_path::StructName::method_name` for methods on structs. Example: `src/auth.rs::authenticate_user`. Use forward slashes on all platforms -  GraphSwarm normalizes automatically on Windows.
 
@@ -155,13 +159,18 @@ graphswarm server
 # Start MCP server with live file watcher
 graphswarm server --watch
 
+# Start MCP server over HTTP instead of stdio (POST /mcp, GET /health).
+# Binds to 127.0.0.1 only -ignores --watch.
+graphswarm server --http
+graphswarm server --http --port 8080   # default port is 3000
+
 # ── Export ────────────────────────────────────────────────────────
 # Export graph.json, graph.html, and GRAPH_REPORT.md into graphswarm-out/
 graphswarm export .
 
 # ── Install ───────────────────────────────────────────────────────
-# Install skill files for all editors (recommended)
-graphswarm install --project . --platform all
+# Install skill files for all editors (--platform all is the default)
+graphswarm install --project .
 
 # Install for a specific editor only
 graphswarm install --project . --platform claude   # Claude Code
@@ -182,7 +191,7 @@ graphswarm install
 | Python | ✅ Full support |
 | JavaScript | ✅ Full support |
 | TypeScript | ✅ Full support |
-| Go | 🔜 Coming soon |
+| Go | ✅ Full support |
 
 ---
 
@@ -281,7 +290,22 @@ Then open `graphswarm-out/graph.html` in a browser.
 
 ## Roadmap
 
-**v0.1.0 -  Current release**
+**v0.2.0 -  Current release**
+
+- Call graph indexing for Rust, Python, JavaScript, TypeScript, and Go
+- 6 MCP tools: `query_graph`, `get_callers`, `get_callees`, `shortest_path`, `explain_entity`, `find_tests`
+- Test-function detection and test-coverage mapping (`find_tests`)
+- HTTP transport for MCP (`graphswarm server --http --port <n>`), in addition to stdio
+- Top-K pre-filtering for fast queries on large graphs
+- `.graphswarm/config.toml`, written by `graphswarm install`, so MCP hosts can locate the project database regardless of their working directory
+- Clean public library API (`graphswarm` can be used as a Rust crate, not just a CLI)
+- File watcher for live graph updates
+- D3.js visual graph export (works offline)
+- Skill file installation for Claude Code, Cursor, and Codex (`--platform all` by default)
+- Pre-built release binaries for Windows, Linux, and macOS (Intel + Apple Silicon)
+- 290 tests, 0 warnings, 7.9 MB binary
+
+**v0.1.0 -  Previous release**
 
 - Call graph indexing for Rust, Python, JavaScript, and TypeScript
 - 5 MCP tools: `query_graph`, `get_callers`, `get_callees`, `shortest_path`, `explain_entity`
@@ -290,18 +314,13 @@ Then open `graphswarm-out/graph.html` in a browser.
 - Skill file installation for Claude Code, Cursor, and Codex
 - 266 tests, 0 warnings, 7.3 MB binary
 
-**v0.2.0 -  Coming soon**
-
-Major improvements are in progress. If you want to follow along or contribute, watch the repository:
-[https://github.com/dhrish-s/GraphSwarm](https://github.com/dhrish-s/GraphSwarm)
-
 ---
 
 ## Build Stats
 
-- Tests: 266 passing, 0 failed
+- Tests: 290 passing, 0 failed
 - Warnings: 0
-- Binary size: 7.3 MB
+- Binary size: 7.9 MB
 - CI: GitHub Actions
 - License: MIT
 

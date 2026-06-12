@@ -21,7 +21,9 @@ use chrono::Utc;
 
 use super::mod_types::RelevantFile;
 use super::ranker::{build_reason, rank_files, ScoredEntity};
-use super::relevance::{docstring_score, graph_score, name_score, recency_score};
+use super::relevance::{
+    docstring_score, graph_score, name_score, name_score_tokens, recency_score, tokenize,
+};
 use crate::error::Result;
 use crate::indexer::extractor::CodeEntity;
 use crate::storage::graph_queries::GraphStore;
@@ -32,6 +34,16 @@ const W_NAME: f64 = 0.4;
 const W_GRAPH: f64 = 0.3;
 const W_RECENCY: f64 = 0.2;
 const W_DOCSTRING: f64 = 0.1;
+
+/// Extracts the function/method name from an entity key for cheap pre-filtering.
+///
+/// Keys are formatted `entity:{file_path}::{fn_name}` or
+/// `entity:{file_path}::StructName::fn_name` — the name is always the
+/// last `::`-separated component.
+fn extract_name_from_key(entity_key: &str) -> &str {
+    let without_prefix = entity_key.strip_prefix("entity:").unwrap_or(entity_key);
+    without_prefix.rsplit("::").next().unwrap_or(without_prefix)
+}
 
 /// Public query interface for GraphSwarm.
 pub struct QueryEngine {
@@ -82,8 +94,9 @@ impl QueryEngine {
             map
         };
 
-        // entity_keys() returns "entity:<id>" strings.
-        let entity_keys = self.store.entity_keys()?;
+        // Pre-filter: score every entity key by name match only (cheap, no
+        // sled reads), then fully score only the surviving candidates.
+        let entity_keys = self.pre_filter(q, top_k)?;
         let mut scored = Vec::with_capacity(entity_keys.len() / 4 + 1);
 
         for key in &entity_keys {
@@ -146,6 +159,45 @@ impl QueryEngine {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// Pre-filters entity keys by a cheap name-only score before full scoring.
+    ///
+    /// `query()` used to fully score every entity in the store: an O(V) loop
+    /// where each iteration does a sled read + JSON deserialize
+    /// (`entity_by_id`). Most entities have a name that doesn't match the
+    /// query at all, so this pass scores every entity KEY by `name_score`
+    /// alone -pure string comparison, no sled reads -and keeps only the
+    /// top `max(top_k * 4, 20)` candidates for full 4-signal scoring.
+    ///
+    /// Over-fetching by 4x (with a floor of 20) guards against rank
+    /// inversion: an entity with a weak name match but a strong
+    /// graph/recency/docstring signal could still land in the final top-K
+    /// once those signals are added in by `score_entity`.
+    ///
+    /// When the store has fewer than the limit entities, every key is
+    /// returned -this is the "fall back to full scan" case, handled
+    /// automatically by `Iterator::take`.
+    fn pre_filter(&self, query: &str, top_k: usize) -> Result<Vec<String>> {
+        let all_keys = self.store.entity_keys()?;
+
+        // Tokenize the query once -name_score would otherwise re-tokenize
+        // it on every one of the V iterations below.
+        let query_tokens = tokenize(query);
+
+        let mut scored: Vec<(f64, String)> = all_keys
+            .into_iter()
+            .map(|key| {
+                let name = extract_name_from_key(&key);
+                let score = name_score_tokens(name, &query_tokens);
+                (score, key)
+            })
+            .collect();
+
+        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        let limit = (top_k * 4).max(20);
+        Ok(scored.into_iter().take(limit).map(|(_, k)| k).collect())
+    }
 
     /// Computes the combined relevance score for one entity.
     ///
@@ -453,6 +505,80 @@ mod tests {
         let (engine, _dir) = make_test_engine();
         let results = engine.query("zzz_no_match_xyz", 10).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn query_empty_repo_returns_empty_without_error() {
+        let dir = TempDir::new().unwrap();
+        let kv = KvBackend::open(dir.path()).unwrap();
+        let store = GraphStore::new(kv.clone());
+        let history = History::new(kv);
+        let engine = QueryEngine::new(store, history);
+
+        let results = engine.query("authenticate", 5).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn query_results_are_deterministic_across_repeated_calls() {
+        let (engine, _dir) = make_test_engine();
+        let first = engine.query("authenticate", 5).unwrap();
+        let second = engine.query("authenticate", 5).unwrap();
+
+        assert_eq!(first.len(), second.len());
+        for (a, b) in first.iter().zip(second.iter()) {
+            assert_eq!(a.file_path, b.file_path);
+            assert_eq!(a.relevance_score, b.relevance_score);
+        }
+    }
+
+    // ── extract_name_from_key() ──────────────────────────────────────────────
+
+    #[test]
+    fn extract_name_from_key_simple_function() {
+        assert_eq!(
+            extract_name_from_key("entity:src/auth.rs::authenticate_user"),
+            "authenticate_user"
+        );
+    }
+
+    #[test]
+    fn extract_name_from_key_struct_method() {
+        assert_eq!(
+            extract_name_from_key("entity:src/storage/graph_queries.rs::GraphStore::store_graph"),
+            "store_graph"
+        );
+    }
+
+    #[test]
+    fn extract_name_from_key_main() {
+        assert_eq!(extract_name_from_key("entity:src/main.rs::main"), "main");
+    }
+
+    // ── pre_filter() ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn pre_filter_returns_candidates_containing_query_term() {
+        let (engine, _dir) = make_test_engine();
+        let candidates = engine.pre_filter("authenticate", 5).unwrap();
+        assert!(candidates.iter().any(|k| k.contains("authenticate_user")));
+    }
+
+    #[test]
+    fn pre_filter_respects_top_k_times_4_limit() {
+        let (engine, _dir) = make_test_engine();
+        let candidates = engine.pre_filter("test", 2).unwrap();
+        // limit = max(2*4, 20) = 20, far above the 3 entities in the test graph
+        assert!(candidates.len() <= 8);
+    }
+
+    #[test]
+    fn pre_filter_falls_back_to_full_scan_for_small_graphs() {
+        let (engine, _dir) = make_test_engine();
+        // No entity name matches "zzz_no_match_xyz", but the store has only
+        // 3 entities -below the limit floor of 20 -so every key is returned.
+        let candidates = engine.pre_filter("zzz_no_match_xyz", 5).unwrap();
+        assert_eq!(candidates.len(), 3);
     }
 
     // ── explain() ─────────────────────────────────────────────────────────────

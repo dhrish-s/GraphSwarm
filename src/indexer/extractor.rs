@@ -7,6 +7,7 @@ pub enum EntityType {
     Method,
     Import,
     Module,
+    TestFunction,
 }
 
 impl std::fmt::Display for EntityType {
@@ -17,6 +18,7 @@ impl std::fmt::Display for EntityType {
             EntityType::Method => write!(f, "method"),
             EntityType::Import => write!(f, "import"),
             EntityType::Module => write!(f, "module"),
+            EntityType::TestFunction => write!(f, "test_function"),
         }
     }
 }
@@ -140,5 +142,10 @@ mod tests {
     #[test]
     fn entity_type_display() {
         assert_eq!(format!("{}", EntityType::Class), "class");
+    }
+
+    #[test]
+    fn entity_type_display_test_function() {
+        assert_eq!(format!("{}", EntityType::TestFunction), "test_function");
     }
 }

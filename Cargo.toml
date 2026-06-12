@@ -1,6 +1,6 @@
 [package]
 name = "graphswarm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Dhrish"]
 description = "Graph-aware distributed memory for AI coding agents"
@@ -19,6 +19,7 @@ tree-sitter-rust = "0.20"
 tree-sitter-python = "0.20"
 tree-sitter-javascript = "0.20"
 tree-sitter-typescript = "0.20"
+tree-sitter-go = "0.20"
 notify = "6.1"
 notify-debouncer-mini = "0.4"
 anyhow = "1.0"
@@ -57,7 +58,7 @@ harness = false
 name = "query_latency"
 harness = false
 
-# Binary size: 7.3 MB (verified 2026-06-04 after Phase 6 additions, well under 20 MB target)
+# Binary size: 7.9 MB (verified 2026-06-11 for v0.2.0, well under 20 MB target)
 # opt-level = "z" optimizes for size (vs "3" which optimizes for speed).
 # lto = true enables link-time optimization for dead-code elimination.
 # strip = true removes debug symbols from the final binary.

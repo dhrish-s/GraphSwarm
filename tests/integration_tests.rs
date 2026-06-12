@@ -242,7 +242,7 @@ fn integration_mcp_tools_call_roundtrip() {
     assert!(v["result"]["content"].as_array().is_some());
 }
 
-// ── Test 5: MCP tools/list returns exactly 5 tools ───────────────────────────
+// ── Test 5: MCP tools/list returns exactly 6 tools ───────────────────────────
 
 #[test]
 fn integration_mcp_tools_list() {
@@ -259,7 +259,7 @@ fn integration_mcp_tools_list() {
     let v = server.handle_request(req, None);
     assert_eq!(v["jsonrpc"], "2.0");
     let tools = v["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 5, "expected exactly 5 tools");
+    assert_eq!(tools.len(), 6, "expected exactly 6 tools");
 
     // Every tool must have name, description, inputSchema
     for tool in tools {

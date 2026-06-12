@@ -3,7 +3,7 @@ use graphswarm::mcp::{tool_definitions, McpResponse};
 #[test]
 fn tool_definitions_valid() {
     let tools = tool_definitions();
-    assert_eq!(tools.len(), 5);
+    assert_eq!(tools.len(), 6);
     for tool in &tools {
         assert!(!tool.name.is_empty());
         assert!(!tool.description.is_empty());

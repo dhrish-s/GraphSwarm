@@ -31,7 +31,16 @@
 /// Case-insensitive: "AUTH" matches "authenticate_user"
 pub fn name_score(entity_name: &str, query: &str) -> f64 {
     let query_tokens = tokenize(query);
+    name_score_tokens(entity_name, &query_tokens)
+}
 
+/// Same as [`name_score`], but takes already-tokenized query tokens.
+///
+/// `name_score` re-tokenizes `query` on every call (allocating a `Vec<String>`
+/// and lowercasing each token). Callers that score many entities against the
+/// *same* query -e.g. `QueryEngine::pre_filter`'s O(V) pass -should tokenize
+/// the query once and call this directly to avoid repeating that work.
+pub(crate) fn name_score_tokens(entity_name: &str, query_tokens: &[String]) -> f64 {
     if query_tokens.is_empty() {
         return 0.0;
     }
@@ -204,6 +213,22 @@ mod tests {
     fn name_score_whitespace_only_query() {
         // Whitespace-only tokenizes to nothing → 0.0
         let s = name_score("authenticate_user", "   ");
+        assert!((s - 0.0).abs() < f64::EPSILON);
+    }
+
+    // ── name_score_tokens ────────────────────────────────────────────────────
+
+    #[test]
+    fn name_score_tokens_matches_name_score() {
+        let query_tokens = tokenize("authenticate user");
+        let a = name_score_tokens("authenticate_user", &query_tokens);
+        let b = name_score("authenticate_user", "authenticate user");
+        assert!((a - b).abs() < f64::EPSILON, "expected {b}, got {a}");
+    }
+
+    #[test]
+    fn name_score_tokens_empty_tokens_is_zero() {
+        let s = name_score_tokens("authenticate_user", &[]);
         assert!((s - 0.0).abs() < f64::EPSILON);
     }
 

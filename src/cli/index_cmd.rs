@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::indexer::extractor::EntityType;
 use crate::indexer::CodeIndexer;
 use crate::storage::{GraphStore, KvBackend};
 use crate::tracker::ActionLogger;
@@ -80,15 +81,24 @@ impl IndexCommand {
             .map(|l| format!("{}", l))
             .collect();
 
+        let test_count = graph
+            .entities
+            .values()
+            .filter(|e| e.entity_type == EntityType::TestFunction)
+            .count();
+
         println!("Indexed repository: {}", self.path);
         println!("Files: {}", graph.files().len());
         println!("Entities: {}", graph.entity_count());
         println!("Call Edges: {}", graph.edge_count());
+        println!("Tests: {}", test_count);
         println!("Languages: {}", langs.join(", "));
 
-        // Ensure output dir
-        let out_dir = Path::new("graphswarm_output");
-        fs::create_dir_all(out_dir)?;
+        // Ensure output dir (co-located with the indexed repo, not the
+        // invocation cwd -keeps this deterministic under parallel tests
+        // and predictable when graphswarm is invoked from another directory).
+        let out_dir = repo_path.join("graphswarm_output");
+        fs::create_dir_all(&out_dir)?;
         let out_file = out_dir.join("graph.json");
 
         let f = fs::File::create(&out_file).map_err(|e| {
@@ -154,8 +164,9 @@ mod tests {
 
         let res = cmd.execute().await;
         assert!(res.is_ok());
-        let out = std::fs::read_to_string("graphswarm_output/graph.json").unwrap();
-        assert!(out.contains("Entities") || out.len() > 0);
+        let out_file = dir.path().join("graphswarm_output").join("graph.json");
+        let out = std::fs::read_to_string(out_file).unwrap();
+        assert!(out.contains("Entities") || !out.is_empty());
     }
 
     #[tokio::test]

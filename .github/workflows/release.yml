@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czf graphswarm-${{ matrix.target }}.tar.gz graphswarm
+          mv graphswarm-${{ matrix.target }}.tar.gz "$GITHUB_WORKSPACE"
+
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          cd target/${{ matrix.target }}/release
+          Compress-Archive -Path graphswarm.exe -DestinationPath graphswarm-${{ matrix.target }}.zip
+          Move-Item graphswarm-${{ matrix.target }}.zip $env:GITHUB_WORKSPACE
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphswarm-${{ matrix.target }}
+          path: graphswarm-${{ matrix.target }}.${{ matrix.archive }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            artifacts/*/*.tar.gz artifacts/*/*.zip \
+            --title "GraphSwarm ${{ github.ref_name }}" \
+            --generate-notes

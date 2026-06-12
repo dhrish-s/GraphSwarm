@@ -1,3 +1,11 @@
+//! Source parsing and call-graph construction.
+//!
+//! `CodeIndexer` walks a directory tree, parses each supported source
+//! file with `CodeParser` (tree-sitter based), and resolves cross-file
+//! imports to build a `CallGraph` of `CodeEntity` nodes connected by
+//! call edges. The result is handed to `GraphStore::store_graph` for
+//! persistence.
+
 pub mod call_graph;
 pub mod extractor;
 pub mod parser;

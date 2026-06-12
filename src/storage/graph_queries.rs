@@ -27,7 +27,7 @@ use super::{
 use crate::error::{Error, Result};
 use crate::indexer::{
     call_graph::{CallGraph, GraphMetadata},
-    extractor::{CodeEntity, Language},
+    extractor::{CodeEntity, EntityType, Language},
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -331,6 +331,53 @@ impl GraphStore {
     /// passing to `entity_by_id`, which re-applies the prefix internally.
     pub fn entity_keys(&self) -> Result<Vec<String>> {
         self.kv.list_prefix("entity:")
+    }
+
+    /// Returns every entity whose `entity_type` is `EntityType::TestFunction`.
+    ///
+    /// Linear scan over all entity: keys -O(V), same as `find_entity_by_name`.
+    /// Acceptable: "what tests exist?" is an occasional query, not a hot path.
+    pub fn find_all_tests(&self) -> Result<Vec<CodeEntity>> {
+        let all_keys = self.kv.list_prefix("entity:")?;
+        let mut tests = Vec::new();
+
+        for key in all_keys {
+            if let Some(entity) = self.kv.get::<CodeEntity>(&key)? {
+                if entity.entity_type == EntityType::TestFunction {
+                    tests.push(entity);
+                }
+            }
+        }
+
+        tests.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(tests)
+    }
+
+    /// Returns all test functions that call `entity_id`, directly or
+    /// transitively through intermediate helper functions.
+    ///
+    /// Uses the same reverse BFS as `impact_subtree`/`reverse_bfs` to find
+    /// every entity that calls into `entity_id`, then filters to entities
+    /// tagged `EntityType::TestFunction`. This answers "what tests exercise
+    /// this function?" -if a test calls a helper that calls this function,
+    /// the test still "covers" it.
+    pub fn tests_covering(&self, entity_id: &str) -> Result<Vec<CodeEntity>> {
+        let reachable = self.reverse_bfs(entity_id, 5)?;
+        let mut tests = Vec::new();
+
+        for id in reachable {
+            if id == entity_id {
+                continue; // reverse_bfs includes the start node itself
+            }
+            if let Some(entity) = self.entity_by_id(&id)? {
+                if entity.entity_type == EntityType::TestFunction {
+                    tests.push(entity);
+                }
+            }
+        }
+
+        tests.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(tests)
     }
 
     // ── File watcher methods ──────────────────────────────────────────────────
@@ -964,5 +1011,82 @@ mod tests {
         // load_graph should reflect the new index exactly -no ghost entities
         let loaded = store.load_graph().unwrap();
         assert_eq!(loaded.entities.len(), 2);
+    }
+
+    // ── find_all_tests / tests_covering (Phase 3) ────────────────────────────
+
+    /// Graph with a test function layered on top of make_test_graph():
+    ///   test_authenticate (TestFunction) → authenticate_user → verify_token
+    ///   main (Function) → authenticate_user
+    ///   setup_helper (Function, NOT a test -name doesn't matter for this check)
+    fn make_test_graph_with_tests() -> CallGraph {
+        let mut graph = make_test_graph();
+
+        let test_e = CodeEntity {
+            id: "tests/auth_test.rs::test_authenticate".into(),
+            name: "test_authenticate".into(),
+            entity_type: EntityType::TestFunction,
+            file_path: "tests/auth_test.rs".into(),
+            line_start: 1,
+            line_end: 5,
+            language: Language::Rust,
+            docstring: None,
+            calls: vec!["src/auth.rs::authenticate_user".into()],
+            called_by: vec![],
+        };
+        let helper_e = CodeEntity {
+            id: "tests/auth_test.rs::setup_helper".into(),
+            name: "setup_helper".into(),
+            entity_type: EntityType::Function,
+            file_path: "tests/auth_test.rs".into(),
+            line_start: 7,
+            line_end: 9,
+            language: Language::Rust,
+            docstring: None,
+            calls: vec![],
+            called_by: vec![],
+        };
+
+        graph.add_entity(test_e);
+        graph.add_entity(helper_e);
+        graph.add_call(
+            "tests/auth_test.rs::test_authenticate".into(),
+            "src/auth.rs::authenticate_user".into(),
+        );
+
+        graph
+    }
+
+    #[test]
+    fn find_all_tests_returns_only_test_functions() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph_with_tests()).unwrap();
+
+        let tests = store.find_all_tests().unwrap();
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].id, "tests/auth_test.rs::test_authenticate");
+        assert_eq!(tests[0].entity_type, EntityType::TestFunction);
+    }
+
+    #[test]
+    fn tests_covering_finds_transitive_test() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph_with_tests()).unwrap();
+
+        // test_authenticate calls authenticate_user, which calls verify_token
+        // -so test_authenticate transitively covers verify_token.
+        let tests = store.tests_covering("src/auth.rs::verify_token").unwrap();
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].id, "tests/auth_test.rs::test_authenticate");
+    }
+
+    #[test]
+    fn tests_covering_returns_empty_when_no_test_calls_entity() {
+        let (store, _dir) = temp_store();
+        store.store_graph(&make_test_graph_with_tests()).unwrap();
+
+        // Nothing calls main -no test can cover it.
+        let tests = store.tests_covering("src/main.rs::main").unwrap();
+        assert!(tests.is_empty());
     }
 }

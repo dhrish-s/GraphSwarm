@@ -1,3 +1,11 @@
+//! Crate-wide error type for GraphSwarm.
+//!
+//! Every fallible operation in GraphSwarm returns `Result`, an alias for
+//! `std::result::Result<T, Error>`. `Error` is a flat enum with one
+//! variant per subsystem (indexing, querying, storage, MCP, ...); use the
+//! lowercase constructors (`Error::index`, `Error::query`, etc.) to build
+//! one from a message.
+
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;

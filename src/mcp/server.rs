@@ -1,4 +1,6 @@
-//! MCP stdio server for GraphSwarm.
+//! MCP server for GraphSwarm -stdio and HTTP transports.
+//!
+//! ## stdio transport (`run`)
 //!
 //! The server runs a simple read-process-write loop:
 //!
@@ -23,15 +25,31 @@
 //! Tool calls are synchronous. The ActionLogger background task runs in
 //! a Tokio runtime -the server itself uses blocking stdio I/O, which
 //! is correct because MCP clients send one request at a time.
+//!
+//! ## HTTP transport (`run_http`)
+//!
+//! `run_http` exposes the same JSON-RPC 2.0 protocol over `POST /mcp`
+//! (plus `GET /health`) using axum, binding to `127.0.0.1` only -
+//! GraphSwarm has no authentication, so the HTTP transport is for local
+//! tooling that can't speak stdio, not for exposing the graph on a
+//! network. Both transports share `dispatch_request` for parsing and
+//! dispatch, so a malformed request gets the same `-32700 Parse error`
+//! response on either one.
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::mcp::protocol::{McpErrorResponse, McpRequest, McpResponse};
 use crate::mcp::tools::{dispatch, tool_definitions, GraphSwarmState};
 use crate::query::QueryEngine;
 use crate::storage::{GraphStore, KvBackend};
 use crate::tracker::History;
+use axum::{
+    extract::State,
+    routing::{get, post},
+    Json, Router,
+};
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// MCP stdio server.
 ///
@@ -40,7 +58,7 @@ use std::path::PathBuf;
 pub struct McpServer {
     /// Path to the `.graphswarm_db` sled directory.
     db_path: PathBuf,
-    /// HTTP port -unused for stdio transport, kept for the HTTP future (Part 7).
+    /// Default HTTP port for `run_http`, used when the CLI doesn't override it.
     pub port: u16,
 }
 
@@ -75,21 +93,12 @@ impl McpServer {
                 continue; // ignore blank lines between messages
             }
 
-            let response_json = match serde_json::from_str::<McpRequest>(trimmed) {
-                Err(e) => serde_json::to_string(&McpErrorResponse::new(
-                    None,
-                    -32700,
-                    format!("Parse error: {e}"),
-                ))
-                .unwrap_or_default(),
-                Ok(req) => {
-                    // Notifications (no id) don't require a response in JSON-RPC 2.0.
-                    // We still produce one here because some MCP hosts expect it;
-                    // clients that follow the spec will simply ignore the null-id reply.
-                    let val = self.handle_request(req, state.as_ref());
-                    serde_json::to_string(&val).unwrap_or_default()
-                }
-            };
+            // Notifications (no id) don't require a response in JSON-RPC 2.0.
+            // We still produce one here because some MCP hosts expect it;
+            // clients that follow the spec will simply ignore the null-id reply.
+            let response_json =
+                serde_json::to_string(&self.dispatch_request(trimmed, state.as_ref()))
+                    .unwrap_or_default();
 
             if writeln!(out, "{response_json}").is_err() {
                 break;
@@ -177,6 +186,58 @@ impl McpServer {
         }
     }
 
+    /// Parses a raw JSON-RPC request string and dispatches it via `handle_request`.
+    ///
+    /// Shared by both transports: `run()` calls this once per stdin line, and
+    /// `run_http()`'s `/mcp` handler calls this once per POST body. Centralizing
+    /// the parse step here means malformed JSON gets the same `-32700 Parse
+    /// error` JSON-RPC response regardless of transport.
+    fn dispatch_request(&self, raw: &str, state: Option<&GraphSwarmState>) -> serde_json::Value {
+        match serde_json::from_str::<McpRequest>(raw.trim()) {
+            Err(e) => serde_json::to_value(McpErrorResponse::new(
+                None,
+                -32700,
+                format!("Parse error: {e}"),
+            ))
+            .unwrap(),
+            Ok(req) => self.handle_request(req, state),
+        }
+    }
+
+    /// Runs the MCP server over HTTP, serving the same JSON-RPC 2.0 protocol
+    /// as `run()` at `POST /mcp`, plus `GET /health` for liveness checks.
+    ///
+    /// Binds to `127.0.0.1:port` -localhost only. Blocking call -runs until
+    /// the process is killed or the listener errors.
+    pub async fn run_http(self, port: u16) -> Result<()> {
+        let addr = format!("127.0.0.1:{port}");
+        let listener = tokio::net::TcpListener::bind(&addr)
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to bind to {addr}: {e}")))?;
+
+        eprintln!("[graphswarm] MCP server ready on http://{addr}/mcp");
+        self.serve(listener).await
+    }
+
+    /// Builds the axum router and serves it on `listener` until the process exits.
+    ///
+    /// Split out from `run_http` so tests can bind to an OS-assigned port
+    /// (`127.0.0.1:0`), read the real address back with `local_addr()`, and
+    /// hand the bound listener here.
+    async fn serve(self, listener: tokio::net::TcpListener) -> Result<()> {
+        let graph_state = self.open_state();
+        let state: HttpState = Arc::new((self, graph_state));
+
+        let app = Router::new()
+            .route("/mcp", post(handle_mcp_post))
+            .route("/health", get(|| async { "ok" }))
+            .with_state(state);
+
+        axum::serve(listener, app)
+            .await
+            .map_err(|e| Error::mcp(format!("HTTP server error: {e}")))
+    }
+
     /// Opens the sled database and builds `GraphSwarmState`.
     ///
     /// Returns `None` if the database doesn't exist (not indexed yet).
@@ -200,6 +261,18 @@ impl McpServer {
     pub fn port(&self) -> u16 {
         self.port
     }
+}
+
+/// Shared state for the HTTP transport: the server (for `dispatch_request`)
+/// plus the loaded graph state (`None` if the repo hasn't been indexed yet).
+/// `Arc` lets axum clone the state per request without requiring
+/// `GraphSwarmState: Clone`.
+type HttpState = Arc<(McpServer, Option<GraphSwarmState>)>;
+
+/// `POST /mcp` -handles one JSON-RPC 2.0 request, same protocol as stdio.
+async fn handle_mcp_post(State(state): State<HttpState>, body: String) -> Json<serde_json::Value> {
+    let (server, graph_state) = state.as_ref();
+    Json(server.dispatch_request(&body, graph_state.as_ref()))
 }
 
 // Helper: build a minimal McpRequest for tests without going through serde.
@@ -298,11 +371,11 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_returns_five_tools() {
+    fn tools_list_returns_six_tools() {
         let (server, _dir) = temp_server();
         let req = make_req(serde_json::json!(1), "tools/list", None);
         let v = server.handle_request(req, None);
-        assert_eq!(v["result"]["tools"].as_array().unwrap().len(), 5);
+        assert_eq!(v["result"]["tools"].as_array().unwrap().len(), 6);
     }
 
     #[test]
@@ -399,5 +472,99 @@ mod tests {
             v.get("result").is_some(),
             "valid query must return a result"
         );
+    }
+
+    // ── dispatch_request ─────────────────────────────────────────────────────
+
+    #[test]
+    fn dispatch_request_parse_error_returns_32700() {
+        let (server, _dir) = temp_server();
+        let v = server.dispatch_request("not json", None);
+        assert_eq!(v["error"]["code"], -32700);
+    }
+
+    #[test]
+    fn dispatch_request_valid_request_dispatches_to_handle_request() {
+        let (server, _dir) = temp_server();
+        let raw = r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#;
+        let v = server.dispatch_request(raw, None);
+        assert_eq!(v["result"]["protocolVersion"], "2024-11-05");
+    }
+
+    // ── HTTP transport ────────────────────────────────────────────────────────
+
+    /// Sends a raw HTTP/1.1 request over a fresh TCP connection and returns the
+    /// full response text (status line, headers, and body).
+    async fn http_request(addr: std::net::SocketAddr, request: &str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).await.unwrap();
+        response
+    }
+
+    /// Extracts the body from a raw HTTP response (everything after the blank
+    /// line that ends the headers).
+    fn response_body(raw_response: &str) -> &str {
+        raw_response.split("\r\n\r\n").nth(1).unwrap_or("")
+    }
+
+    /// Binds to an OS-assigned port, spawns `server.serve()` on it, and
+    /// returns the address tests can connect to.
+    async fn spawn_http_server(server: McpServer) -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(server.serve(listener));
+        addr
+    }
+
+    #[tokio::test]
+    async fn run_http_serves_initialize_over_mcp_endpoint() {
+        let dir = TempDir::new().unwrap();
+        let server = McpServer::new(dir.path().join(".graphswarm_db"));
+        let addr = spawn_http_server(server).await;
+
+        let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#;
+        let request = format!(
+            "POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+
+        let response = http_request(addr, &request).await;
+        let v: serde_json::Value = serde_json::from_str(response_body(&response)).unwrap();
+        assert_eq!(v["result"]["protocolVersion"], "2024-11-05");
+    }
+
+    #[tokio::test]
+    async fn run_http_tools_list_returns_six_tools() {
+        let dir = TempDir::new().unwrap();
+        let server = McpServer::new(dir.path().join(".graphswarm_db"));
+        let addr = spawn_http_server(server).await;
+
+        let body = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+        let request = format!(
+            "POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+
+        let response = http_request(addr, &request).await;
+        let v: serde_json::Value = serde_json::from_str(response_body(&response)).unwrap();
+        assert_eq!(v["result"]["tools"].as_array().unwrap().len(), 6);
+    }
+
+    #[tokio::test]
+    async fn run_http_health_endpoint_returns_ok() {
+        let dir = TempDir::new().unwrap();
+        let server = McpServer::new(dir.path().join(".graphswarm_db"));
+        let addr = spawn_http_server(server).await;
+
+        let request = "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+        let response = http_request(addr, request).await;
+
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert!(response_body(&response).contains("ok"));
     }
 }

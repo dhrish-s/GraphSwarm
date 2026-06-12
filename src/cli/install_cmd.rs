@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Args)]
 pub struct InstallCommand {
-    /// Target platform: claude (default), cursor, codex, all
-    #[arg(long, default_value = "claude")]
+    /// Target platform: all (default), claude, cursor, codex
+    #[arg(long, default_value = "all")]
     pub platform: String,
 
     /// Install into this project directory (default: user home directory)
@@ -43,6 +43,8 @@ impl InstallCommand {
                 return Ok(());
             }
         }
+
+        self.write_config(&base)?;
 
         if self.project.is_some() {
             println!("\nInstalled to project: {}", base.display());
@@ -104,6 +106,28 @@ impl InstallCommand {
             crate::error::Error::storage(format!("Cannot write graphswarm.mdc: {e}"))
         })?;
         println!("  Cursor: {}", path.display());
+        Ok(())
+    }
+
+    /// Writes `.graphswarm/config.toml` recording the absolute repo root.
+    ///
+    /// When an MCP host (e.g. Claude Code) launches `graphswarm server` as a
+    /// subprocess, its working directory is the host's, not the project's.
+    /// `find_repo_root()` in `server_cmd.rs` reads this file to recover the
+    /// correct project root so `.graphswarm/db` can still be located.
+    fn write_config(&self, base: &Path) -> Result<()> {
+        let config_dir = base.join(".graphswarm");
+        std::fs::create_dir_all(&config_dir).map_err(|e| {
+            crate::error::Error::storage(format!("Cannot create .graphswarm dir: {e}"))
+        })?;
+        let repo_root = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+        // Always use forward slashes in config — works on all platforms
+        let root_str = repo_root.to_string_lossy().replace('\\', "/");
+        let content = format!("[graphswarm]\nrepo_root = \"{root_str}\"\nversion = \"0.2.0\"\n");
+        let config_path = config_dir.join("config.toml");
+        std::fs::write(&config_path, &content)
+            .map_err(|e| crate::error::Error::storage(format!("Cannot write config.toml: {e}")))?;
+        println!("  Config:     {}", config_path.display());
         Ok(())
     }
 
@@ -182,6 +206,7 @@ If graphswarm is not in PATH replace it with:
 | get_callees | entity_id (string) | What does this function call? |
 | shortest_path | from (string), to (string) | How does A reach B? |
 | explain_entity | entity_id (string) | Full details about a function |
+| find_tests | entity_id (string, optional) | List all tests, or find tests covering a function |
 
 ## Entity ID format
   file_path::function_name
@@ -204,6 +229,10 @@ get_callers (Windows PowerShell):
 
 explain_entity (Windows PowerShell):
   '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"explain_entity","arguments":{"entity_id":"src/mcp/server.rs::McpServer::run"}}}' | graphswarm server --path .
+
+find_tests (Windows PowerShell):
+  '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find_tests","arguments":{}}}' | graphswarm server --path .
+  '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find_tests","arguments":{"entity_id":"src/auth.rs::verify_token"}}}' | graphswarm server --path .
 
 query_graph (Linux/Mac):
   echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query_graph","arguments":{"query":"authentication flow","top_k":5}}}' | graphswarm server --path .
@@ -249,6 +278,7 @@ the codebase, use the GraphSwarm MCP tools to query the call graph.
 - `get_callees` -what does a function call?
 - `shortest_path` -shortest call chain between two entities
 - `explain_entity` -full details about a code entity
+- `find_tests` -list test functions, or find tests covering a function
 
 ## Starting the server
 
@@ -355,5 +385,59 @@ mod tests {
         let content = std::fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
         let count = content.matches("## GraphSwarm").count();
         assert_eq!(count, 1, "## GraphSwarm section must appear exactly once");
+    }
+
+    #[tokio::test]
+    async fn install_writes_config_toml() {
+        let dir = TempDir::new().unwrap();
+        let cmd = InstallCommand {
+            platform: "all".into(),
+            project: Some(dir.path().to_str().unwrap().to_string()),
+        };
+        cmd.execute().await.unwrap();
+        let config_path = dir.path().join(".graphswarm/config.toml");
+        assert!(
+            config_path.exists(),
+            "config.toml must exist at {}",
+            config_path.display()
+        );
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        assert!(content.contains("repo_root"));
+        assert!(content.contains("version"));
+    }
+
+    #[tokio::test]
+    async fn install_config_toml_repo_root_is_absolute() {
+        let dir = TempDir::new().unwrap();
+        let cmd = InstallCommand {
+            platform: "claude".into(),
+            project: Some(dir.path().to_str().unwrap().to_string()),
+        };
+        cmd.execute().await.unwrap();
+        let content = std::fs::read_to_string(dir.path().join(".graphswarm/config.toml")).unwrap();
+        let repo_root_line = content
+            .lines()
+            .find(|l| l.starts_with("repo_root"))
+            .expect("repo_root line must be present");
+        let value = repo_root_line
+            .split('=')
+            .nth(1)
+            .unwrap()
+            .trim()
+            .trim_matches('"');
+        assert!(
+            Path::new(value).is_absolute(),
+            "repo_root '{value}' must be an absolute path"
+        );
+    }
+
+    #[test]
+    fn install_default_platform_is_all() {
+        use clap::{Args, FromArgMatches};
+        let cmd = clap::Command::new("test");
+        let cmd = InstallCommand::augment_args(cmd);
+        let matches = cmd.get_matches_from(["test"]);
+        let install = InstallCommand::from_arg_matches(&matches).unwrap();
+        assert_eq!(install.platform, "all");
     }
 }

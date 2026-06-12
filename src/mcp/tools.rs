@@ -116,6 +116,26 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
                 "required": ["entity_id"]
             }),
         },
+        ToolDefinition {
+            name: "find_tests".into(),
+            description: "Find test functions in the repository. With no arguments, \
+                lists every detected test function. With 'entity_id', finds the \
+                test functions that call this entity directly or transitively -i.e. \
+                which tests cover it."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "entity_id": {
+                        "type": "string",
+                        "description": "Optional entity id in format 'file_path::function_name'. \
+                            If provided, returns tests that cover this entity. \
+                            If omitted, lists all test functions in the repository."
+                    }
+                },
+                "required": []
+            }),
+        },
     ]
 }
 
@@ -133,9 +153,10 @@ pub fn dispatch(
         "get_callees" => handle_get_callees(args, state),
         "shortest_path" => handle_shortest_path(args, state),
         "explain_entity" => handle_explain_entity(args, state),
+        "find_tests" => handle_find_tests(args, state),
         unknown => Err(crate::error::Error::query(format!(
             "Unknown tool: '{unknown}'. Available: query_graph, get_callers, \
-             get_callees, shortest_path, explain_entity"
+             get_callees, shortest_path, explain_entity, find_tests"
         ))),
     }
 }
@@ -385,6 +406,57 @@ fn handle_explain_entity(args: &Value, state: &GraphSwarmState) -> Result<Vec<Co
     }
 }
 
+fn handle_find_tests(args: &Value, state: &GraphSwarmState) -> Result<Vec<ContentBlock>> {
+    match args.get("entity_id").and_then(|v| v.as_str()) {
+        // entity_id given: find tests that cover it (directly or transitively).
+        Some(entity_id_raw) => {
+            let entity_id_owned = resolve_entity_id(entity_id_raw, state.engine.store());
+            let entity_id = entity_id_owned.as_str();
+
+            let tests = state.engine.store().tests_covering(entity_id)?;
+
+            if tests.is_empty() {
+                return Ok(vec![ContentBlock::text(format!(
+                    "No tests found covering: {entity_id}\n\
+                     Either no test calls this entity (directly or transitively), \
+                     or it hasn't been indexed."
+                ))]);
+            }
+
+            let mut lines = vec![format!("Tests covering {entity_id}:\n")];
+            for t in &tests {
+                lines.push(format!(
+                    "- {} ({}:{}–{})",
+                    t.id, t.file_path, t.line_start, t.line_end
+                ));
+            }
+            lines.push(format!("\nTotal: {} test(s)", tests.len()));
+
+            Ok(vec![ContentBlock::text(lines.join("\n"))])
+        }
+        // No entity_id: list every detected test function.
+        None => {
+            let tests = state.engine.store().find_all_tests()?;
+
+            if tests.is_empty() {
+                return Ok(vec![ContentBlock::text(
+                    "No test functions found in the indexed repository.".to_string(),
+                )]);
+            }
+
+            let mut lines = vec![format!("Found {} test function(s):\n", tests.len())];
+            for t in &tests {
+                lines.push(format!(
+                    "- {} ({}:{}–{})",
+                    t.id, t.file_path, t.line_start, t.line_end
+                ));
+            }
+
+            Ok(vec![ContentBlock::text(lines.join("\n"))])
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -459,11 +531,42 @@ mod tests {
         (GraphSwarmState { engine }, dir)
     }
 
+    /// Same as `make_test_graph`, plus a TestFunction that calls
+    /// `authenticate_user` -so it transitively covers `verify_token`.
+    fn make_test_state_with_tests() -> (GraphSwarmState, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let kv = KvBackend::open(dir.path()).unwrap();
+        let store = GraphStore::new(kv.clone());
+
+        let mut graph = make_test_graph();
+        let test_e = CodeEntity {
+            id: "tests/auth_test.rs::test_authenticate".into(),
+            name: "test_authenticate".into(),
+            entity_type: EntityType::TestFunction,
+            file_path: "tests/auth_test.rs".into(),
+            line_start: 1,
+            line_end: 5,
+            language: Language::Rust,
+            docstring: None,
+            calls: vec!["src/auth.rs::authenticate_user".into()],
+            called_by: vec![],
+        };
+        graph.add_entity(test_e);
+        graph.add_call(
+            "tests/auth_test.rs::test_authenticate".into(),
+            "src/auth.rs::authenticate_user".into(),
+        );
+
+        store.store_graph(&graph).unwrap();
+        let engine = QueryEngine::new(store, History::new(kv));
+        (GraphSwarmState { engine }, dir)
+    }
+
     // ── tool_definitions ──────────────────────────────────────────────────────
 
     #[test]
-    fn tool_definitions_returns_five_tools() {
-        assert_eq!(tool_definitions().len(), 5);
+    fn tool_definitions_returns_six_tools() {
+        assert_eq!(tool_definitions().len(), 6);
     }
 
     #[test]
@@ -475,6 +578,7 @@ mod tests {
         assert!(names.contains(&"get_callees"));
         assert!(names.contains(&"shortest_path"));
         assert!(names.contains(&"explain_entity"));
+        assert!(names.contains(&"find_tests"));
     }
 
     #[test]
@@ -590,5 +694,30 @@ mod tests {
         let args = serde_json::json!({"entity_id": "src/auth.rs::authenticate_user"});
         let content = dispatch("get_callers", &args, &state).unwrap();
         assert!(content[0].text.contains("1 caller"));
+    }
+
+    // ── find_tests ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn find_tests_without_entity_id_lists_all_tests() {
+        let (state, _dir) = make_test_state_with_tests();
+        let content = dispatch("find_tests", &serde_json::json!({}), &state).unwrap();
+        assert!(content[0].text.contains("test_authenticate"));
+    }
+
+    #[test]
+    fn find_tests_with_entity_id_returns_covering_tests() {
+        let (state, _dir) = make_test_state_with_tests();
+        let args = serde_json::json!({"entity_id": "src/auth.rs::verify_token"});
+        let content = dispatch("find_tests", &args, &state).unwrap();
+        assert!(content[0].text.contains("test_authenticate"));
+    }
+
+    #[test]
+    fn find_tests_no_results_returns_helpful_message() {
+        let (state, _dir) = make_test_state();
+        // make_test_graph() has no TestFunction entities at all.
+        let content = dispatch("find_tests", &serde_json::json!({}), &state).unwrap();
+        assert!(content[0].text.contains("No test functions found"));
     }
 }
