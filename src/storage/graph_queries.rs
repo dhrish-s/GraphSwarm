@@ -1117,12 +1117,19 @@ mod tests {
             });
         }
         for i in 0..chain.len() - 1 {
-            graph.add_call(format!("deep.rs::{}", chain[i]), format!("deep.rs::{}", chain[i + 1]));
+            graph.add_call(
+                format!("deep.rs::{}", chain[i]),
+                format!("deep.rs::{}", chain[i + 1]),
+            );
         }
 
         store.store_graph(&graph).unwrap();
         let tests = store.tests_covering("deep.rs::target").unwrap();
-        assert_eq!(tests.len(), 1, "test_deep is 7 hops away but must still be found");
+        assert_eq!(
+            tests.len(),
+            1,
+            "test_deep is 7 hops away but must still be found"
+        );
         assert_eq!(tests[0].id, "deep.rs::test_deep");
     }
 }

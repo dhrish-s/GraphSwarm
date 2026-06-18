@@ -121,7 +121,7 @@ fn find_repo_root(explicit_path: &str) -> PathBuf {
             for line in content.lines() {
                 let trimmed = line.trim();
                 if trimmed.starts_with("repo_root") {
-                    if let Some(val) = trimmed.split('=').nth(1) {
+                    if let Some((_, val)) = trimmed.split_once('=') {
                         let root = val.trim().trim_matches('"');
                         let p = PathBuf::from(root);
                         if p.exists() {
@@ -142,18 +142,29 @@ mod tests {
     use std::path::Path;
     use tempfile::TempDir;
 
+    /// Process-wide cwd is global mutable state shared across cargo test's
+    /// parallel test threads. Holding this for the lifetime of every
+    /// `CwdGuard` serializes all cwd-changing tests in this module so one
+    /// test's `set_current_dir` can never run while another is mid-test.
+    static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// Restores the process working directory on drop, even on panic,
     /// so a failing assertion in a cwd-changing test doesn't leak its
     /// changed cwd into other tests running in the same process.
     struct CwdGuard {
         original: PathBuf,
+        _lock: std::sync::MutexGuard<'static, ()>,
     }
 
     impl CwdGuard {
         fn change_to(path: &Path) -> Self {
+            let lock = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             let original = std::env::current_dir().unwrap();
             std::env::set_current_dir(path).unwrap();
-            CwdGuard { original }
+            CwdGuard {
+                original,
+                _lock: lock,
+            }
         }
     }
 
@@ -188,6 +199,31 @@ mod tests {
         // (not necessarily byte-identical to the raw canonicalize() output —
         // on Windows canonicalize() returns a `\\?\` verbatim path, while
         // config.toml stores it with forward slashes).
+        assert_eq!(found, PathBuf::from(&root_str));
+        assert!(found.exists());
+    }
+
+    #[test]
+    fn find_repo_root_handles_equals_sign_in_path() {
+        // Directory names may legally contain '=' on Unix-like systems (only
+        // '/' and NUL are forbidden). split('=').nth(1) would truncate the
+        // value at the first '=' inside the path itself; split_once('=')
+        // must keep everything after the key's own '='.
+        let dir = TempDir::new().unwrap();
+        let repo_root = dir.path().join("my=project");
+        std::fs::create_dir_all(&repo_root).unwrap();
+        let repo_root = repo_root.canonicalize().unwrap();
+        let config_dir = repo_root.join(".graphswarm");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let root_str = repo_root.to_string_lossy().replace('\\', "/");
+        std::fs::write(
+            config_dir.join("config.toml"),
+            format!("[graphswarm]\nrepo_root = \"{root_str}\"\nversion = \"0.2.0\"\n"),
+        )
+        .unwrap();
+
+        let _guard = CwdGuard::change_to(&repo_root);
+        let found = find_repo_root(".");
         assert_eq!(found, PathBuf::from(&root_str));
         assert!(found.exists());
     }

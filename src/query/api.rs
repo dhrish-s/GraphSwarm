@@ -45,6 +45,16 @@ fn extract_name_from_key(entity_key: &str) -> &str {
     without_prefix.rsplit("::").next().unwrap_or(without_prefix)
 }
 
+/// Extracts the file path from an entity key for cheap pre-filtering.
+///
+/// Keys are formatted `entity:{file_path}::{fn_name}` (file paths never
+/// contain `::`), so the file path is always the first `::`-separated
+/// component.
+fn extract_file_path_from_key(entity_key: &str) -> &str {
+    let without_prefix = entity_key.strip_prefix("entity:").unwrap_or(entity_key);
+    without_prefix.split("::").next().unwrap_or(without_prefix)
+}
+
 /// Public query interface for GraphSwarm.
 pub struct QueryEngine {
     store: GraphStore,
@@ -187,8 +197,12 @@ impl QueryEngine {
         let mut scored: Vec<(f64, String)> = all_keys
             .into_iter()
             .map(|key| {
+                // Mirror score_entity's signal 1: a query can match either the
+                // entity name or its file path (e.g. "auth" -> src/auth.rs::process_payment).
                 let name = extract_name_from_key(&key);
-                let score = name_score_tokens(name, &query_tokens);
+                let file_path = extract_file_path_from_key(&key);
+                let score = name_score_tokens(name, &query_tokens)
+                    .max(name_score_tokens(file_path, &query_tokens));
                 (score, key)
             })
             .collect();
@@ -570,6 +584,67 @@ mod tests {
         let candidates = engine.pre_filter("test", 2).unwrap();
         // limit = max(2*4, 20) = 20, far above the 3 entities in the test graph
         assert!(candidates.len() <= 8);
+    }
+
+    #[test]
+    fn pre_filter_keeps_file_path_only_matches_on_large_graphs() {
+        // score_entity's signal 1 matches on entity.name OR entity.file_path
+        // ("src" must match "src/auth.rs"). pre_filter must mirror that, or a
+        // file-path-only match can be starved out of the candidate pool by
+        // unrelated entities with a (partial) name match, on any graph larger
+        // than the max(top_k*4, 20) pre-filter floor.
+        let dir = TempDir::new().unwrap();
+        let kv = KvBackend::open(dir.path()).unwrap();
+        let store = GraphStore::new(kv.clone());
+        let history = History::new(kv);
+
+        let mut graph = CallGraph::new();
+
+        // Target: name doesn't match "billing system" at all, but its file
+        // path matches both query tokens -> full match via file_path.
+        graph.add_entity(CodeEntity {
+            id: "src/billing_system.rs::process".into(),
+            name: "process".into(),
+            entity_type: EntityType::Function,
+            file_path: "src/billing_system.rs".into(),
+            line_start: 1,
+            line_end: 5,
+            language: Language::Rust,
+            docstring: None,
+            calls: vec![],
+            called_by: vec![],
+        });
+
+        // 25 filler entities: name partially matches ("billing" only, not
+        // "system") -> score 0.5 each, strictly below the target's 1.0, but
+        // there are enough of them to fill the top-20 pre-filter floor if the
+        // target's file path is ignored.
+        for i in 0..25 {
+            graph.add_entity(CodeEntity {
+                id: format!("src/filler_{i}.rs::billing_other_{i}"),
+                name: format!("billing_other_{i}"),
+                entity_type: EntityType::Function,
+                file_path: format!("src/filler_{i}.rs"),
+                line_start: 1,
+                line_end: 5,
+                language: Language::Rust,
+                docstring: None,
+                calls: vec![],
+                called_by: vec![],
+            });
+        }
+
+        store.store_graph(&graph).unwrap();
+        let engine = QueryEngine::new(store, history);
+
+        let candidates = engine.pre_filter("billing system", 1).unwrap();
+        assert!(
+            candidates
+                .iter()
+                .any(|k| k.contains("billing_system.rs::process")),
+            "file-path-only match must survive pre-filtering even when \
+             outnumbered by partially-name-matching entities"
+        );
     }
 
     #[test]

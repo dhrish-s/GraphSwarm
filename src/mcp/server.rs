@@ -50,6 +50,8 @@ use axum::{
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
+use tower_http::timeout::TimeoutLayer;
 
 /// MCP stdio server.
 ///
@@ -231,7 +233,8 @@ impl McpServer {
         let app = Router::new()
             .route("/mcp", post(handle_mcp_post))
             .route("/health", get(|| async { "ok" }))
-            .with_state(state);
+            .with_state(state)
+            .layer(TimeoutLayer::new(Duration::from_secs(30)));
 
         axum::serve(listener, app)
             .await
@@ -252,7 +255,18 @@ impl McpServer {
             return None;
         }
 
-        let kv = KvBackend::open(&self.db_path).ok()?;
+        let kv = match KvBackend::open(&self.db_path) {
+            Ok(kv) => kv,
+            Err(e) => {
+                eprintln!(
+                    "[graphswarm] Warning: failed to open database at {}: {}. \
+                     Tool calls will report 'not indexed' until this is resolved.",
+                    self.db_path.display(),
+                    e
+                );
+                return None;
+            }
+        };
         let engine = QueryEngine::new(GraphStore::new(kv.clone()), History::new(kv));
         // GraphStore is accessible via engine.store() -no second clone needed.
         Some(GraphSwarmState { engine })
