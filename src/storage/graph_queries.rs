@@ -362,7 +362,7 @@ impl GraphStore {
     /// this function?" -if a test calls a helper that calls this function,
     /// the test still "covers" it.
     pub fn tests_covering(&self, entity_id: &str) -> Result<Vec<CodeEntity>> {
-        let reachable = self.reverse_bfs(entity_id, 5)?;
+        let reachable = self.reverse_bfs(entity_id, usize::MAX)?;
         let mut tests = Vec::new();
 
         for id in reachable {
@@ -1088,5 +1088,41 @@ mod tests {
         // Nothing calls main -no test can cover it.
         let tests = store.tests_covering("src/main.rs::main").unwrap();
         assert!(tests.is_empty());
+    }
+
+    #[test]
+    fn tests_covering_finds_test_beyond_five_hops() {
+        let (store, _dir) = temp_store();
+        let mut graph = CallGraph::new();
+
+        // 7-hop chain: test_deep -> a -> b -> c -> d -> e -> f -> target
+        let chain = ["test_deep", "a", "b", "c", "d", "e", "f", "target"];
+        for (i, name) in chain.iter().enumerate() {
+            let entity_type = if i == 0 {
+                EntityType::TestFunction
+            } else {
+                EntityType::Function
+            };
+            graph.add_entity(CodeEntity {
+                id: format!("deep.rs::{name}"),
+                name: name.to_string(),
+                entity_type,
+                file_path: "deep.rs".into(),
+                line_start: 1,
+                line_end: 1,
+                language: Language::Rust,
+                docstring: None,
+                calls: vec![],
+                called_by: vec![],
+            });
+        }
+        for i in 0..chain.len() - 1 {
+            graph.add_call(format!("deep.rs::{}", chain[i]), format!("deep.rs::{}", chain[i + 1]));
+        }
+
+        store.store_graph(&graph).unwrap();
+        let tests = store.tests_covering("deep.rs::target").unwrap();
+        assert_eq!(tests.len(), 1, "test_deep is 7 hops away but must still be found");
+        assert_eq!(tests[0].id, "deep.rs::test_deep");
     }
 }
