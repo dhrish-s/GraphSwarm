@@ -485,7 +485,7 @@ impl GraphStore {
         let mut affected_files: HashSet<String> = HashSet::new();
 
         for entity_id in &entity_ids {
-            let reachable = self.reverse_bfs(entity_id, 5)?;
+            let reachable = self.reverse_bfs(entity_id, usize::MAX)?;
             for rid in reachable {
                 if let Ok(Some(e)) = self.entity_by_id(&rid) {
                     if e.file_path != file_path {
