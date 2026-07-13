@@ -38,7 +38,7 @@ const W_DOCSTRING: f64 = 0.1;
 /// Extracts the function/method name from an entity key for cheap pre-filtering.
 ///
 /// Keys are formatted `entity:{file_path}::{fn_name}` or
-/// `entity:{file_path}::StructName::fn_name` — the name is always the
+/// `entity:{file_path}::StructName::fn_name` -  the name is always the
 /// last `::`-separated component.
 fn extract_name_from_key(entity_key: &str) -> &str {
     let without_prefix = entity_key.strip_prefix("entity:").unwrap_or(entity_key);

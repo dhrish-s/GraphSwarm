@@ -21,3 +21,6 @@ target/criterion/
 Thumbs.db
 *.tmp.graphswarm_db/ 
 **/.graphswarm_db/ 
+/notes-learning/
+
+

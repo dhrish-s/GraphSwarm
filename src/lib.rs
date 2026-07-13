@@ -79,12 +79,12 @@ pub mod watcher;
 /// example above.
 pub mod prelude {
     pub use crate::error::{Error, Result};
-    pub use crate::indexer::{CallGraph, CodeEntity, CodeIndexer, EntityType};
     /// Summary metadata about an indexed `CallGraph`: repo path, indexing
     /// time, and entity/file/language counts.
     pub use crate::indexer::call_graph::GraphMetadata;
     /// The programming language a parsed `CodeEntity` belongs to.
     pub use crate::indexer::extractor::Language;
+    pub use crate::indexer::{CallGraph, CodeEntity, CodeIndexer, EntityType};
     pub use crate::mcp::McpServer;
     pub use crate::query::{QueryEngine, RelevantFile};
     pub use crate::storage::{GraphStore, KvBackend};

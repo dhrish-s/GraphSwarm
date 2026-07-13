@@ -23,7 +23,7 @@ pub struct ExportCommand {
     #[arg(short, long, default_value = "all")]
     pub format: String,
 
-    /// Path to repository root (where .graphswarm_db lives)
+    /// Path to repository root (where .graphswarm/db lives)
     #[arg(default_value = ".")]
     pub path: String,
 }
@@ -122,9 +122,22 @@ impl ExportCommand {
             .map(|(src, tgt)| serde_json::json!({ "source": src, "target": tgt }))
             .collect();
 
-        let nodes_json = serde_json::to_string(&nodes).unwrap_or_default();
-        let links_json = serde_json::to_string(&links).unwrap_or_default();
-        let repo_path = &graph.metadata.repo_path;
+        // Escape '<' as < inside the embedded JSON so an entity or file
+        // name containing "</script>" can't break out of the <script> block.
+        let nodes_json = serde_json::to_string(&nodes)
+            .unwrap_or_default()
+            .replace('<', "\\u003c");
+        let links_json = serde_json::to_string(&links)
+            .unwrap_or_default()
+            .replace('<', "\\u003c");
+        // HTML-escape the repo path -it is interpolated into <title> and <h1>,
+        // and directory names may legally contain '<', '>', or '&'.
+        let repo_path = graph
+            .metadata
+            .repo_path
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
         let indexed_at = &graph.metadata.indexed_at;
         let n_entities = graph.entities.len();
         let n_edges = graph.edges.len();
@@ -212,11 +225,12 @@ const node = g.append("g").selectAll(".node")
 node.append("circle").attr("r", 7)
   .attr("fill", d => COLOR[d.type] || "#8b949e").attr("stroke", "#0d1117");
 node.append("text").text(d => d.name).attr("dx", 10).attr("dy", 4);
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 node.on("mouseover", (e, d) => {
     tooltip.style.opacity = 1;
     tooltip.style.left = (e.pageX + 12) + "px";
     tooltip.style.top  = (e.pageY - 20) + "px";
-    tooltip.innerHTML  = "<b>" + d.name + "</b><br>" + d.type + "<br><small>" + d.file + "</small>";
+    tooltip.innerHTML  = "<b>" + esc(d.name) + "</b><br>" + esc(d.type) + "<br><small>" + esc(d.file) + "</small>";
   })
   .on("mousemove", e => { tooltip.style.left = (e.pageX + 12) + "px"; tooltip.style.top = (e.pageY - 20) + "px"; })
   .on("mouseout",  () => { tooltip.style.opacity = 0; });

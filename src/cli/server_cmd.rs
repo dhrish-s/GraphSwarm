@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 #[derive(Args)]
 pub struct ServerCommand {
-    /// Path to repository root (where .graphswarm_db lives)
+    /// Path to repository root (where .graphswarm/db lives)
     #[arg(long, default_value = ".")]
     pub path: String,
 
@@ -196,7 +196,7 @@ mod tests {
         let _guard = CwdGuard::change_to(&repo_root);
         let found = find_repo_root(".");
         // find_repo_root must resolve to the path stored in config.toml
-        // (not necessarily byte-identical to the raw canonicalize() output —
+        // (not necessarily byte-identical to the raw canonicalize() output -
         // on Windows canonicalize() returns a `\\?\` verbatim path, while
         // config.toml stores it with forward slashes).
         assert_eq!(found, PathBuf::from(&root_str));

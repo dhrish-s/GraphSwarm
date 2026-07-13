@@ -52,8 +52,12 @@ pub enum EventKind {
 /// Source file extensions that GraphSwarm indexes.
 ///
 /// Files with other extensions (e.g. .txt, .md, .json) are ignored by the
-/// watcher to avoid spurious re-indexing.
-pub const WATCHED_EXTENSIONS: &[&str] = &["rs", "py", "js", "ts", "tsx"];
+/// watcher to avoid spurious re-indexing. Must stay in sync with the
+/// extension lists in `indexer::parser` -every extension the parser can
+/// index should be watched, or `--watch` serves stale data for those files.
+pub const WATCHED_EXTENSIONS: &[&str] = &[
+    "rs", "py", "js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "go",
+];
 
 /// Returns true if `path` has an extension that GraphSwarm can index.
 pub fn is_source_file(path: &std::path::Path) -> bool {

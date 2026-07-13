@@ -6,7 +6,7 @@
 use graphswarm::mcp::McpServer;
 
 fn main() -> anyhow::Result<()> {
-    let server = McpServer::new(".graphswarm_db");
+    let server = McpServer::new(".graphswarm/db");
     server.run()?;
     Ok(())
 }

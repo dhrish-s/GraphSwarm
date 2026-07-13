@@ -25,6 +25,17 @@ fn source_file_py_is_watched() {
 }
 
 #[test]
+fn source_file_go_is_watched() {
+    // Go support landed in v0.2.0 -the watcher must reconcile .go changes.
+    assert!(is_source_file(std::path::Path::new("pkg/auth/login.go")));
+}
+
+#[test]
+fn source_file_jsx_is_watched() {
+    assert!(is_source_file(std::path::Path::new("src/App.jsx")));
+}
+
+#[test]
 fn non_source_txt_is_ignored() {
     assert!(!is_source_file(std::path::Path::new("README.txt")));
 }

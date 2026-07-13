@@ -121,9 +121,12 @@ impl InstallCommand {
             crate::error::Error::storage(format!("Cannot create .graphswarm dir: {e}"))
         })?;
         let repo_root = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
-        // Always use forward slashes in config — works on all platforms
+        // Always use forward slashes in config -  works on all platforms
         let root_str = repo_root.to_string_lossy().replace('\\', "/");
-        let content = format!("[graphswarm]\nrepo_root = \"{root_str}\"\nversion = \"0.2.0\"\n");
+        let content = format!(
+            "[graphswarm]\nrepo_root = \"{root_str}\"\nversion = \"{}\"\n",
+            env!("CARGO_PKG_VERSION")
+        );
         let config_path = config_dir.join("config.toml");
         std::fs::write(&config_path, &content)
             .map_err(|e| crate::error::Error::storage(format!("Cannot write config.toml: {e}")))?;

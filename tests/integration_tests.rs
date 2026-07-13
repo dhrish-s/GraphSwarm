@@ -15,14 +15,6 @@ use graphswarm::tracker::History;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-fn make_engine(dir: &TempDir) -> (QueryEngine, GraphStore) {
-    let kv = KvBackend::open(dir.path()).unwrap();
-    let store = GraphStore::new(kv.clone());
-    let hist = History::new(kv);
-    let engine = QueryEngine::new(store.clone(), hist);
-    (engine, store)
-}
-
 fn write_file(dir: &TempDir, name: &str, content: &str) -> String {
     let path = dir.path().join(name);
     let mut f = std::fs::File::create(&path).unwrap();
@@ -62,7 +54,6 @@ fn integration_index_and_query_rust_files() {
         .take(3)
         .map(|r| r.file_path.as_str())
         .collect();
-    let auth_path = dir.path().join("auth.rs").to_string_lossy().to_string();
     assert!(
         top3_paths.iter().any(|p| p.contains("auth")),
         "auth.rs not in top 3: {top3_paths:?}"
@@ -76,7 +67,6 @@ fn integration_index_and_query_rust_files() {
             r.relevance_score
         );
     }
-    let _ = auth_path;
 }
 
 // ── Test 2: caller chain traversal ───────────────────────────────────────────

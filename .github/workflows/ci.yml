@@ -10,6 +10,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # GraphSwarm has a history of Windows-only path bugs (\\?\ verbatim paths,
+  # separator handling) -run the test suite on Windows too so contributor
+  # PRs can't silently break it. Release build + size check stay Linux-only.
+  test-windows:
+    name: Test Suite (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run tests
+        run: cargo test
+
   test:
     name: Test Suite
     runs-on: ubuntu-latest
@@ -31,17 +56,19 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build (release)
-        run: cargo build --release
+      # Cheapest checks first so a trivial failure doesn't cost a full
+      # release build's worth of CI time.
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Clippy (all targets)
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
         run: cargo test
 
-      - name: Clippy
-        run: cargo clippy -- -D warnings
-
-      - name: Format check
-        run: cargo fmt --check
+      - name: Build (release)
+        run: cargo build --release
 
       - name: Check binary size
         run: |
