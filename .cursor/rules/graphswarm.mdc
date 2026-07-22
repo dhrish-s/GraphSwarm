@@ -16,6 +16,7 @@ the codebase, use the GraphSwarm MCP tools to query the call graph.
 - `get_callees` -what does a function call?
 - `shortest_path` -shortest call chain between two entities
 - `explain_entity` -full details about a code entity
+- `find_tests` -list test functions, or find tests covering a function
 
 ## Starting the server
 

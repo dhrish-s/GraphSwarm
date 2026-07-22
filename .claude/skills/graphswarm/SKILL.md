@@ -58,6 +58,7 @@ If graphswarm is not in PATH replace it with:
 | get_callees | entity_id (string) | What does this function call? |
 | shortest_path | from (string), to (string) | How does A reach B? |
 | explain_entity | entity_id (string) | Full details about a function |
+| find_tests | entity_id (string, optional) | List all tests, or find tests covering a function |
 
 ## Entity ID format
   file_path::function_name
@@ -80,6 +81,10 @@ get_callers (Windows PowerShell):
 
 explain_entity (Windows PowerShell):
   '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"explain_entity","arguments":{"entity_id":"src/mcp/server.rs::McpServer::run"}}}' | graphswarm server --path .
+
+find_tests (Windows PowerShell):
+  '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find_tests","arguments":{}}}' | graphswarm server --path .
+  '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find_tests","arguments":{"entity_id":"src/auth.rs::verify_token"}}}' | graphswarm server --path .
 
 query_graph (Linux/Mac):
   echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query_graph","arguments":{"query":"authentication flow","top_k":5}}}' | graphswarm server --path .
