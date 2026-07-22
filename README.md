@@ -110,6 +110,50 @@ Your AI editor now has full call graph awareness. Try asking:
 
 ---
 
+## Getting Started on a New Machine
+
+Cloning this repo onto a new machine should get you to a working `graphswarm` binary with minimal manual steps. Two paths:
+
+### Option A: Dev Container (recommended if you use VS Code + Docker)
+
+1. Install [Docker](https://www.docker.com/products/docker-desktop/) and the [Dev Containers VS Code extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
+2. Open the cloned folder in VS Code and choose **"Reopen in Container"** when prompted (or run the **Dev Containers: Reopen in Container** command).
+3. The container uses a pinned Rust image (`rust:1.85-bookworm`) and automatically runs `cargo build --release`, then verifies the binary with `--version` as part of `postCreateCommand`. If either step fails, the container log will show the error instead of silently succeeding.
+
+### Option B: Manual setup script
+
+Mac/Linux:
+
+```bash
+git clone https://github.com/dhrish-s/GraphSwarm
+cd GraphSwarm
+./setup.sh
+```
+
+Windows (PowerShell):
+
+```powershell
+git clone https://github.com/dhrish-s/GraphSwarm
+cd GraphSwarm
+.\setup.ps1
+```
+
+Each script:
+
+- Checks whether `cargo`/`rustc` are already installed; if not, installs Rust via [rustup](https://rustup.rs/) non-interactively.
+- Runs `rustup show` to confirm the toolchain is active.
+- Runs `cargo build --release`.
+- Confirms the binary exists at `target/release/graphswarm` (or `.exe` on Windows) and runs `graphswarm --version` to prove it actually executes, not just compiles.
+
+Both scripts are safe to re-run if something fails partway through.
+
+### Troubleshooting
+
+- **`rustup` install fails or hangs**: check your network/proxy settings, then try the manual install from [rustup.rs](https://rustup.rs/) directly. If a partial install left `~/.cargo` or `~/.rustup` in a bad state, remove those directories and re-run the setup script.
+- **Dev container fails to build**: make sure Docker is installed and the Docker daemon is actually running (`docker info` should succeed, not error). If Docker isn't available on your machine, use Option B (the manual setup script) instead.
+
+---
+
 ## How It Works
 
 GraphSwarm reads your source files using a fast native parser. It extracts every function, method, class, and import as a named entity, then detects which functions call which others. The result is a complete bidirectional call graph of your entire codebase, built in a single pass.
